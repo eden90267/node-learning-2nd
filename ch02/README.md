@@ -446,3 +446,140 @@ console.log(buf1.compare(buf3)); // 0
 `SlowBuffer`類別可讓你從預先分配的記憶體區段外建構小buffer並保存較長時間。但使用此類別對效能會有重大影響，**別無他法**才使用。
 
 ## Node 的 callback 與非同步事件處理
+
+JavaScript是單執行緒的，因此是同步的。由於Node基於JavaScript，它也繼承執行序的同步行為。
+
+但若函式須等待某物：
+
+- 開啟檔案
+- 網頁回應
+- 其他活動
+
+會阻斷應用程式的進行直到操作完成，這會是伺服器應用程式的重大問題。
+
+防止阻斷的解決方法：**事件迴圈**
+
+### 事件佇列(迴圈)
+
+開啟非同步功能，應用程式可採取兩種方式：
+
+1. 指派執行緒給耗時程序，其餘部分平行執行。這種方式的問題是執行緒成本很高，不只是資源，還有應用程式的複雜性。
+2. 事件迴圈架構。涉及耗時程序時，應用程式不等待它的完成。相對的，該程序在完成時發出事件通知。此事件會加入到佇列，或稱為**事件迴圈**中。相依的功能向應用程式登記對此事件的興趣，當事件從事件迴圈中抽出並加以處理時，相依的功能被叫用並傳入與事件相關的資料。
+
+browser與Node的JavaScript都採用後者。在browser中，當你對一個元素加上click處理程序，實際上是登記(訂閱)事件並提供事件發生時被叫用的callback函式，讓接下來的應用程式繼續執行。
+
+Node有自己的事件迴圈，但相較於等待點擊元素等UI事件，它的迴圈用於幫助進行伺服器功能，主要是輸出入(I/O)。這包括：
+
+- 開啟檔案的事件
+- 檔案開啟時讀取其內容到buffer
+- 通知用戶程序已完成
+- 等待使用者網路請求
+
+這些程序耗時，還可能競爭資源，且資源的存取通常會鎖住資源直到原始程序結束。此外，網路應用程式會等待使用者或其他應用程式的動作。
+
+Node在佇列中循序處理所有事件。它收到你感興趣的事件時會叫用你提供的callback函式，傳入與事件相關的資訊。
+
+```
+var http = require('http');
+var server = http.createServer();
+
+server.on('request', function(req, res) {
+
+    console.log('request event');
+
+    res.writeHead(200, {'Content-Type': 'text/plain'});
+    res.end('Hello World\n');
+});
+
+server.on('connection', function() {
+    console.log('connection event');
+});
+
+server.listen(8124, function() {
+    console.log(`listening event`);
+});
+
+console.log(`Server running on port 8124`);
+```
+
+注意requestListener()函式，此伺服器請求的callback不在呼叫http.createServer()函式。相對的，應用程式指派新建構的HTTP伺服器給一個變數，然後擷取兩個事件
+
+- request：用戶發出請求時
+- connection：新用戶連上應用程式時
+
+這兩種情況下，事件以HTTP伺服器類別繼承自`EventEmitter`類別的`on()`函式訂閱。還有個聆聽事件：使用HTTP的server.listen()函式這個callback函式存取。
+
+1. 立即輸出“Server running on port 8124”
+2. “listening event”
+3. “connection event“
+4. 一或兩個的“request event”(取決於瀏覽器對新網站的請求方式)
+
+reload只會收到請求事件訊息("request event")，連線已經建立且會持續直到關閉瀏覽器或逾時。
+
+如果應用程式中有函式或模組想要做成非同步，要使用以下的特定條件定義它：
+
+## 建構非同步callback函式
+
+Node應用程式callback功能的基本結構，它建構doSomething()函式的物件，此函式取用三個函數：
+
+1. 沒錯誤回傳資料
+2. 必須是字串
+3. callback函式
+
+如果沒有第二個字串或不是字串，則物件建構出新的Error物件，它會從callback函式回傳。如果沒發生錯誤，callback函式被呼叫，錯誤設定為null，函式資料得以回傳。
+
+以下是callback功能的基本結構：
+
+```
+var fib = function (n) {
+    if (n < 2) return n;
+    return fib(n - 1) + fib(n - 2);
+}
+
+var Obj = function () { };
+
+Obj.prototype.doSomething = function(arg1_) {
+    var callback_ = arguments[arguments.length - 1];
+    callback = typeof callback_ == 'function' ? callback_ : null;
+    var arg1 = typeof arg1_ === 'number' ? arg1_ : null;
+
+    if (!arg1)
+        return callback(new Error('first arg missing or not a number'));
+    
+    process.nextTick(function(){
+        // CPU阻斷
+        var data = fib(arg1);
+        callback(null, data);
+    })
+}
+
+var test = new Obj();
+var number = 10;
+
+test.doSomething(number, function(err, value) {
+    if (err) return console.error(err);
+    console.log('fibonaci value for %d is %d', number, value);
+});
+
+console.log(`called doSomething`);
+```
+
+關鍵功能一：確保最後一個參數是callback。錯誤第一的模式通常稱為**errback**。
+
+關鍵功能二：發生錯誤時建構新的Error物件並作為callback函式的結果回傳。在非同步中無法依賴`try...catch`，因此錯誤處理必須以callback的Error物件處理。
+
+關鍵功能三：無錯誤則叫用傳給函式的callback函式。為確保callback是非同步，我們在`process.nextTick()`函式中呼叫它。`process.nextTick()`可確保事件迴圈在呼叫函式前被清除。這表示所有同步功能在叫用(任何)阻斷功能前被處理掉。費氏數列在`process.nextTick()`中呼叫，因此可確保CPU密集功能非同步處理。
+
+簡言之，只要出現這四個關鍵功能，其他都可變：
+
+- 確保最後一個參數是callback
+- 如果發生錯誤，建構出Error並作為callback函式的第一個參數回傳
+- 如果沒有發生錯誤，呼叫callback函式，將錯誤參數設為null，傳入相關資料
+- callback函式必須在`process.nextTick()`中呼叫以確保程序不會被阻斷
+
+## EventEmitter
+
+任何時候見到物件emit事件與使用on函式處理事件，就會看到EventEmitter的痕跡。
+
+EventEmitter使Node能夠非同步處理事件。
+
