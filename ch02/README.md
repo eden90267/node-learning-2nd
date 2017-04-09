@@ -811,3 +811,264 @@ console.log(`waiting on first interval...`);
 `setImmediate()`：建構一個事件，但優先於`setTimeout()`與s`etInterval()`所建構的事件。然而他不會優先於I/O事件，且它沒有相關的計時器。`setImmediate()`事件在所有I/O事件之後與任何計時器事件之前於目前的事件佇列中發出。如果從callback函式呼叫它，它會被放在叫用它的事件完成後的下一個事件迴圈中。這是一種**加入事件到目前或下一個事件迴圈而不用加入任何計時器的方式**。這比`setTimeout(callback, 0)`更有效率，因它優先於其他計時器事件。
 
 它類似`process.nextTick()`，除了`process.nextTick()`的callback函式是在`目前事件迴圈結束後與新的I/O事件加入前被叫用`。
+
+## 套疊callback與例外處理
+
+循序程式設計：
+
+```
+const fs = require('fs');
+
+try {
+    let data = fs.readFileSync('./apples.txt', 'utf8');
+    console.log(data);
+    var adjData = data.replace(/[A|a]pple/g, 'orange');
+    fs.writeFileSync('./oranges.txt', adjData);
+} catch (error) {
+    console.error(error);
+}
+```
+
+由於可能發生問題且我們無法確保能在模組函式內部處理錯誤，我們將函式呼叫包裝在try區塊以優雅一或至少更能提供資訊一的進行例外處理。
+
+轉換此同步循序應用程式模式成非同步實作需要幾個修改。以非同步函式取代相對應的同步函式，但為避免阻斷情況，表示如果個別呼叫函式不能保證正確的順序。唯一能保證正確順序的辦法是使用**套疊callback**。
+
+```
+const fs = require('fs');
+fs.readFile('./apples.txt', 'utf8', function(err, data) {
+    if (err) {
+        console.error(err);
+    } else {
+        let adjData = data.replace(/[A\a]pple/g, 'orange');
+        fs.writeFile('./oranges.txt', adjData, function(err) {
+            if (err) console.error(err);
+        });
+    }
+});
+```
+
+想記錄錯誤，可輸出Node錯誤物件的stack屬性：
+
+```
+if (err) {
+    console.error(err.stack);
+}
+```
+
+引用循序非同步函式會增加另一個callback套疊且可能對錯誤處理是個挑戰。範例，存取一個目錄下的檔案，做replace然後寫回原檔案。每個檔案修改使用輸出串流來記錄：
+
+```
+const fs = require('fs');
+const ws = fs.createWriteStream('./log.txt', {
+    'flags': 'a',
+    'encoding': 'utf8',
+    'mode': 0666
+});
+
+ws.on('open', function() {
+    fs.readdir('./data/', function(err, files) {
+        if (err) {
+            console.log(err.message);
+        } else {
+            files.forEach(function(name) {
+                fs.readFile('./data/' + name, 'utf8', function(err, data) {
+                    if (err) {
+                        console.error(err.message);
+                    } else {
+                        var adjData = data.replace(/somecompany\.com/g, 'burningbird.net');
+                        fs.writeFile('./data/' + name, adjData, function(err) {
+                            if (err) {
+                                console.error(err.message);
+                            } else {
+                                ws.write('change ' + name + '\n', 'utf8', function(err) {
+                                    if (err) console.error(err.message);
+                                });
+                            }
+                        });
+                    }
+                });
+            });
+        }
+    });
+});
+
+ws.on('error', function(err) {
+    console.error('ERROR:' + err);
+})
+```
+
+如果執行此應用程式多次並檢查log.txt檔案，你會發現檔案以不同隨機順序處理。
+
+如果想要檢查檔案何時處理完以便執行其他動作會引發另一個問題。forEach方法非同步叫用迭代callback，因此它不會阻斷。
+
+```
+const fs = require('fs');
+const ws = fs.createWriteStream('./log.txt', {
+    'flags': 'a',
+    'encoding': 'utf8',
+    'mode': 0666
+});
+
+ws.on('open', function() {
+    fs.readdir('./data/', function(err, files) {
+        if (err) {
+            console.log(err.message);
+        } else {
+            files.forEach(function(name) {
+                fs.readFile('./data/' + name, 'utf8', function(err, data) {
+                    if (err) {
+                        console.error(err.message);
+                    } else {
+                        var adjData = data.replace(/somecompany\.com/g, 'burningbird.net');
+                        fs.writeFile('./data/' + name, adjData, function(err) {
+                            if (err) {
+                                console.error(err.message);
+                            } else {
+                                ws.write('change ' + name + '\n', 'utf8', function(err) {
+                                    if (err) console.error(err.message);
+                                    else console.log(`finished ${name}`);
+                                });
+                            }
+                        });
+                    }
+                });
+            });
+            console.log(`all finished`);
+        }
+    });
+});
+
+ws.on('error', function(err) {
+    console.error('ERROR:' + err);
+})
+```
+
+會在控制台收到下列輸出：
+
+```
+all finished
+finished data1.txt
+finished data2.txt
+finished data4.txt
+finished data3.txt
+finished data5.txt
+```
+
+為克服這個挑戰，對每個紀錄訊息加上遞增計數然後檢查陣列長度以輸出"all done"訊息：
+
+```
+const fs = require('fs');
+const ws = fs.createWriteStream('./log.txt', {
+    'flags': 'a',
+    'encoding': 'utf8',
+    'mode': 0666
+});
+
+ws.on('open', function () {
+    fs.readdir('./data/', function (err, files) {
+        if (err) {
+            console.log(err.message);
+        } else {
+            let counter = 0;
+            files.forEach(function (name) {
+                fs.readFile('./data/' + name, 'utf8', function (err, data) {
+                    if (err) {
+                        console.error(err.message);
+                    } else {
+                        var adjData = data.replace(/somecompany\.com/g, 'burningbird.net');
+                        fs.writeFile('./data/' + name, adjData, function (err) {
+                            if (err) {
+                                console.error(err.message);
+                            } else {
+                                ws.write('change ' + name + '\n', 'utf8', function (err) {
+                                    if (err) {
+                                        console.error(err.message);
+                                    } else {
+                                        console.log(`finished ${name}`);
+                                        counter++;
+                                        if (counter >= files.length) {
+                                            console.log(`all done`);
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            });
+        }
+    });
+});
+
+ws.on('error', function (err) {
+    console.error('ERROR:' + err);
+})
+```
+
+如果操作的目錄下面還有子目錄。此應用程式若遇到子目錄，它會輸出下列錯誤訊息但繼續處理其他內容：
+
+```
+EISDIR: illegal operation on a directory, read
+```
+
+使用`fs.stats`方法以回傳代表來自Unix的stat命令的資料來防止這種錯誤。此物件帶有關於物件的資訊，包括它是否為檔案。`fs.stats`方法也是非同步方法，需更複雜的callback套疊。
+
+```
+const fs = require('fs');
+const ws = fs.createWriteStream('./log.txt', {
+    'flags': 'a',
+    'encoding': 'utf8',
+    'mode': 0666
+});
+
+ws.on('open', function () {
+    let counter = 0;
+    fs.readdir('./data/', function (err, files) {
+        if (err) {
+            console.log(err.message);
+        } else {
+            files.forEach(function (name) {
+                fs.stat('./data/' + name, function (err, stats) {
+                    if (err) return err;
+                    if (!stats.isFile()) {
+                        counter++;
+                        return;
+                    }
+                    fs.readFile('./data/' + name, 'utf8', function (err, data) {
+                        if (err) {
+                            console.error(err.message);
+                        } else {
+                            var adjData = data.replace(/somecompany\.com/g, 'burningbird.net');
+                            fs.writeFile('./data/' + name, adjData, function (err) {
+                                if (err) {
+                                    console.error(err.message);
+                                } else {
+                                    ws.write('change ' + name + '\n', 'utf8', function (err) {
+                                        if (err) {
+                                            console.error(err.message);
+                                        } else {
+                                            console.log(`finished ${name}`);
+                                            counter++;
+                                            if (counter >= files.length) {
+                                                console.log(`all done`);
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    });
+                });
+            });
+        }
+    });
+});
+
+ws.on('error', function (err) {
+    console.error('ERROR:' + err);
+});
+```
+
+同樣的，此應用程式運作的很好一但不容易閱讀與維護！使用了return來做一些錯誤處理，消除一個條件套疊，但程式還是很難維護。這種callback套疊被叫做**callback千層麵**或**毀滅金字塔**。
+
+之後可以透過Async模組來解決毀滅金字塔，or ES6功能：需要非同步控制處理模組。
