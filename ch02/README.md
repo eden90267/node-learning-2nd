@@ -583,3 +583,231 @@ console.log(`called doSomething`);
 
 EventEmitter使Node能夠非同步處理事件。
 
+```
+// 引用Events模組
+var events = require('events');
+
+// 建構EventEmitter的實例
+var em = new events.EventEmitter();
+
+...
+```
+
+使用新建構的EventEmitter進行兩項基本任務：將事件處理程序接上事件與發送實際事件。`EventEmitter.on()`事件處理程序在發生指定事件時被叫用。此方法第一個參數是事件名稱；第二個是執行功能的callback函式。
+
+```
+em.on('someevent', function(data) { ... });
+```
+
+符合某種條件時，事件會透過`EventEmitter.emit()`方法發出：
+
+```
+if (somecriteria) {
+    em.emit('data');
+}
+```
+
+以下是個EventEmitter範例，每隔三秒發送事件。
+
+```
+const { EventEmitter } = require('events');
+
+let counter = 0;
+
+const em = new EventEmitter();
+
+setInterval(function () {
+    em.emit('timed', counter++);
+}, 3000);
+
+em.on('timed', function(data) {
+    console.log(`timed ${data}`);
+});
+```
+
+此程式的重點在於事件是透過EventEmitter.emit()函式觸發，而EventEmitter.on()用於擷取事件並加以處理。
+
+但這沒什麼用途。我們需要的是在**現有的物件中加上EventEmitter**功能一而非在應用程式中使用EventEmitter的實例。這是Node的`http.Server`與其他大部分事件類別所做的事。
+
+繼承了`EventEmitter`功能，因此我們必須使用Node的`Util`物件來啟用。
+
+Util模組是很好的輔助工具。目前會運用到它的`util.inherits()`函式。
+
+util.inherits()函式讓建構元繼承超建構元的原型方法。`util.inherits()`更特別的是，讓你也可在建構元的函式中直接存取超建構元。
+
+```
+util.inherits(Someobj, EventEmitter);
+```
+
+你可在該物件的方法中呼叫emit方法並對該物件實例撰寫事件處理程序：
+
+```
+Someobj.prototype.someMethod = function() { this.emit('event'); }
+...
+Someobjinstance.on('event', function() { });
+```
+
+以下為範例
+
+```
+"use strict";
+
+const util = require('util');
+const { EventEmitter } = require('events');
+const fs = require('fs');
+
+function InputChecker(name, file) {
+    this.name = name;
+    this.writeStream = fs.createWriteStream('./' + file + '.txt',
+        {
+            'flags': 'a',
+            'encoding': 'utf8',
+            'mode': 0o666  // 使用ES6樣式實字的記號法
+        });
+}
+
+util.inherits(InputChecker, EventEmitter);
+
+InputChecker.prototype.check = function check(input) {
+    let command = input.trim().substr(0, 3);
+    if (command === 'wr:') {
+        this.emit('write', input.substr(3, input.length));
+    } else if (command === 'en:') {
+        this.emit('end');
+    } else {
+        this.emit('echo', input);
+    }
+}
+
+// 測試
+let ic = new InputChecker('Shelley', 'output');
+
+ic.on('write', function (data) {
+    this.writeStream.write(data, 'utf8');
+});
+
+ic.on('echo', function (data) {
+    process.stdout.write(ic.name + ' wrote ' + data);
+});
+
+ic.on('end', function () {
+    process.exit();
+});
+
+// 設定編碼後擷取輸入
+process.stdin.setEncoding('utf8');
+process.stdin.on('readable', function() {
+    let input = process.stdin.read();
+    if (input !== null)
+        ic.check(input);
+})
+```
+
+此功能包含`process.stdin.on`事件處理方法，`process.stdin`是繼承來自`EventEmitter`的眾多Node物件之一。
+
+on()函式其實是EventEmitter.addListener函式的捷徑，取用相同參數。
+
+可使用`EventEmitter.once()`傾聽下一個事件：
+
+```
+ic.once(event. function);
+```
+
+一個事件有十個以上的傾聽程序時，預設會提出警告。使用`setMaxListeners`並傳入數字來改變傾聽程序的數量。使用零值設定無上限。
+
+也可使用EventEmitter.reomveListener()移除傾聽程序
+
+```
+ic.on('echo', callback);
+ic.removeListener('echo', callback);
+```
+
+這會從事件傾聽陣列移除一個傾聽程序並維持原來順序。但若有使用`EventEmitter.listeners()`複製事件傾聽程序陣列，移除傾聽程序後必須要重新建構它。
+
+### Node的事件迴圈與計時器
+
+Node也有`setTimeout()`與`setInterval()`，不完全一樣，因為browser使用**browser引擎**維護事件迴圈，而Node的事件迴圈是由**libuv這個C++函式庫**處理一但差異幾乎無關緊要。
+
+```
+setTimeout(function(name) {
+    console.log('Hello ' + name);
+}, 3000, 'Shelley');
+console.log('waiting on timer...');
+```
+
+參數列中的名稱傳入給setTimeout()中的callback函式作為參數。setTimeout是非同步的。
+
+如果建構計時器將它指派給變數，可以取消它。
+
+```
+var timer1 = setTimeout(function(name) {
+    console.log(`Hello ${name}`);
+}, 30000, 'Shelley');
+
+console.log(`waiting on timer...`);
+
+setTimeout(function(timer) {
+    clearTimeout(timer);
+    console.log(`cleared timer`);
+}, 3000, timer1);
+```
+
+`setInterval()`計時器會持續重新啟動，直到應用程式結束或使用`clearInterval()`清除計時器。
+
+```
+var interval = setInterval(function(name) {
+    console.log(`Hello ${name}`);
+}, 3000, 'Shelley');
+
+setTimeout(function(interval) {
+    clearInterval(interval);
+    console.log(`cleared interval `);
+}, 30000, interval);
+
+console.log(`waiting on first interval...`);
+```
+
+Node文件記載，callback函式不保證會準確以n毫秒(無論n為何)叫用。(與browser使用setTimeout()相同)一我們沒有對環境的絕對控制，各種因素會稍微延遲計時器。大部分情況會看不出計時器的差異，但如果要產生動畫，則會確實看到影響。
+
+有兩個Node專屬的函式`ref()`與`runref()`，可對呼叫`setTimeout()`或`setInterval()`所回傳的計時器/間隔使用。
+
+- 如果對計時器呼叫unref()且它是事件佇列中唯一的事件，則計時器被取消且程式可結束
+- 如果你對同一個計時器物件呼叫ref()，這樣會讓程式繼續執行直到計時器被處理。
+
+```
+var timer = setTimeout(function() {
+    console.log(`Hello ${name}`);
+}, 30000, 'Shelley');
+
+timer.unref();
+
+console.log(`waiting on timer...`);
+```
+
+執行此應用程式會輸出控制台訊息然後結束。原因是使用setTimeout()設定的計時器是應用程式的事件佇列中唯一的事件。若加入另一個事件呢？
+
+```
+var interval = setInterval(function (name) {
+    console.log(`Hello ${name}`);
+}, 3000, 'Shelley');
+
+var timer = setTimeout(function(interval) {
+    clearInterval(interval);
+    console.log(`cleared timer`);
+}, 30000, interval);
+
+timer.unref();
+
+console.log(`waiting on first interval...`);
+```
+
+計時器可以繼續，這表示他終結了間隔，且讓計時器保持存活夠久的間隔事件讓計時器得以清除間隔。
+
+最後一組Node計時器函式是Node專屬的：
+
+- `setImmediate()`
+- `clearImmediate()`
+
+`setImmediate()`：建構一個事件，但優先於`setTimeout()`與s`etInterval()`所建構的事件。然而他不會優先於I/O事件，且它沒有相關的計時器。`setImmediate()`事件在所有I/O事件之後與任何計時器事件之前於目前的事件佇列中發出。如果從callback函式呼叫它，它會被放在叫用它的事件完成後的下一個事件迴圈中。這是一種**加入事件到目前或下一個事件迴圈而不用加入任何計時器的方式**。這比`setTimeout(callback, 0)`更有效率，因它優先於其他計時器事件。
+
+它類似`process.nextTick()`，除了`process.nextTick()`的callback函式是在`目前事件迴圈結束後與新的I/O事件加入前被叫用`。
