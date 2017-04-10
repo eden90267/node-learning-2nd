@@ -530,5 +530,340 @@ console.log(newArray.concatArray('hello', ['test1','test2']));
 例如受到大量相依的Mime模組建構了Mime()函式：
 
 ```
+function Mime() { ... }
+```
+
+使用prototype屬性加入函式：
 
 ```
+Mime.prototype.define = function(map) {...}
+```
+
+建構預設實例：
+
+```
+var mime = new Mime();
+```
+
+指派Mime函式到它自己同名的屬性：
+
+```
+mime.Mime = Mime;
+```
+
+然後匯出該實例：
+
+```
+module.exports = mime;
+```
+
+然後你可以在你的應用程式中使用各種mime函式：
+
+```
+var mime = require('mime');
+console.log(mime.lookup('phoenix5a.png')); .. image/png
+```
+
+### 打包整個目錄
+
+你可以將模組製作成獨立的JavaScript檔案，集中在一個目錄下。Node可以載入目錄內容，只要內容依據兩種方式之一安排。
+
+第一種方式是提供帶有目錄資訊的`package.json`檔案，其結構帶有其他資訊，但name與main這兩筆記錄與模組套件有關：
+
+```
+{ "name": "mylibrary",
+  "main": "./mymodule/mylibrary.js"
+}
+```
+
+- name：模組名稱
+- main：模組進入點
+
+第二種方式是載入目錄下的index.js或index.node檔案作為模組進入點
+
+為何提供目錄而非單一模組？最可能原因是你使用了現有的JavaScript函式庫，你只是提供“包裝”檔案以exports陳述包裝顯露的函式。另一原因是你的函式庫很大，想拆開以利修改。
+
+無論是什麼原因，要注意所有匯出的物件必須在Node所載入的主檔中。
+
+### 釋出模組的準備工作
+
+準備要公開模組時，你會想要登記在npm的紀錄中。
+
+package.json。實際上是依循CommonJS模組系統的建議。
+
+package.json檔案中引入的建議欄位有：
+
+- name
+
+    套件名稱一必要
+    
+- description
+
+    套件說明
+    
+- version
+
+    符合語意版本需求的目前版本編號一必要
+    
+- keywords
+
+    搜尋關鍵字陣列
+    
+- maintainers
+
+    套件維護者陣列(包括姓名、郵件與網站)
+    
+- contributors
+
+    套件貢獻者陣列(包括姓名、郵件與網站)
+    
+- bugs
+
+    提出錯誤的URL
+
+- licenses
+
+    授權陣列
+
+- repository
+
+    套件庫
+
+- dependencies
+
+    套件與版本的需求
+    
+只有name與version欄位是必須的，但建議包括這些欄位。幸好npm讓這檔案很容易建構：
+
+```
+npm init
+```
+
+此工具會提示每個必要/建議欄位，完成時產生package.json檔案。
+
+範例：InputChecker物件
+
+1. `node_modules/inputcheck/index.js`
+
+    ```
+    var inputChecker = require('inputcheck').InputChecker;
+
+    // 測試新物件與事件處理程序
+    var ic = new inputChecker('Shelley', 'output');
+
+    ic.on('write', function(data) {
+        this.writeStream.write(data, 'utf8');
+    });
+
+    ic.addListener('echo', function(data) {
+        console.log(`${this.name} wrote ${data}`);
+    });
+
+    ic.on('end', function() {
+        process.exit();
+    });
+
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', function(input) {
+        ic.check(input);
+    })
+    ```
+
+2. 建構package.json
+
+    ```
+    {
+      "name": "inputcheck",
+      "version": "1.0.0",
+      "description": "Looks for and implements commands from input",
+      "main": "index.js",
+      "scripts": {
+          "test": "node test/test.js"
+      },
+      "keywords": [
+          "command",
+          "check"
+      ],
+      "author": "Shelley Powers",
+      "license": "ISC"
+    }
+    ```
+    
+3. test/test.js
+
+    ```
+    var inputChecker = require('inputcheck').InputChecker;
+
+    // 測試新物件與事件處理程序
+    var ic = new inputChecker('Shelley', 'output');
+
+    ic.on('write', function(data) {
+        this.writeStream.write(data, 'utf8');
+    });
+
+    ic.addListener('echo', function(data) {
+        console.log(`${this.name} wrote ${data}`);
+    });
+
+    ic.on('end', function() {
+        process.exit();
+    });
+
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', function(input) {
+        ic.check(input);
+    })
+    ```
+    
+4. 修改package.json
+
+    ```
+    "scripts": {
+      "test": "node test/test.js"
+    }
+    ```
+    
+5. 執行測試應用程式
+
+    ```
+    npm test
+    ```
+    
+6. 為模組建構tarball壓縮檔案。(公布模組可略)
+
+一旦我們提供了必須提供的內容，我們就可以釋出該模組。
+
+### 公佈模組
+
+npm團隊提供釋出Node模組必要內容的詳細指引：[Developer Guide](https://docs.npmjs.com/misc/developers)。
+
+此文件規定一些package.json檔案的額外需求。除了已建構欄位外，我們還需加上`directories`欄位與一些檔案夾，像之前提到的test與doc：
+
+```
+"directories": {
+  "doc": ".",
+  "test": "test",
+  "example": "examples"
+}
+```
+
+Guide建議公佈前測試模組是否能乾淨安裝。為進行此測試，在模組的根目錄輸入下列命令
+
+```
+$ npm install . -g
+/usr/local/lib
+└── inputcheck@1.0.0
+```
+
+此時我們已經測試過inputChecker模組、修改package.json檔案以加上檔案夾、並確定套件可以安裝。
+
+加入成npm使用者：
+
+```
+npm adduser
+```
+
+最後還有一件事：
+
+```
+npm publish
+```
+
+我們可提供tarball或目錄的路徑。如同Guide的警告，目錄下的所有東西都會露出，除非使用`.npmignore`列出要略過的package.json中列出的檔案。但最好就在釋出模組前移除不需要的檔案。
+
+公佈後一且原始碼也上傳至GitHub，此模組已經正式可以供他人使用。
+
+## 發現Node模組與三個必備模組
+
+Async、Commander與Underscore。
+
+### 以Async管理callback
+
+套疊callback逐漸堆高的毀滅金字塔。解決這個問題的一個常見方案之一是**Async模組**。它以更線性與可管理的模式替換典型的callback模式。Async支援的非同步模式有：
+
+- waterfall
+
+    依序呼叫函式，所有的結果以陣列傳遞給最後的callback(也有人稱作series或sequence)
+
+- series
+
+    依序呼叫函式，選擇性的將結果以陣列傳遞給最後的callback
+
+- parallel
+
+    平行執行函式，完成時將結果傳給最後一個callback
+
+- whilst
+
+    重複呼叫一個函式，只在前面的測試回傳false或發生錯誤時呼叫最後一個callback
+
+- queue
+
+    在限制數量下平行呼叫函式，新函式排隊等待其中一個函式完成
+
+- until
+
+    重複呼叫一個函式，只在後處理測試回傳false或發生錯誤時呼叫最後一個callback
+
+- auto
+
+    根據需求呼叫函式，每個函式收到前一個callback的結果
+
+- iterator
+
+    每個函式呼叫下一個，能夠個別存取下一個迭代
+
+- apply
+
+    持續的函式，其參數已經結合其他流程控制函式
+
+- nextTick
+
+    在事件迴圈的下一輪根據`process.nextTick`呼叫callback
+    
+Async模組還提供管理集合的功能，像是它自己的`forEach`、`map`與`filter`，以及其他功能性函式，包括memoization。這裡感興趣的是它的流程控制處理功能。
+
+```
+npm install async
+```
+
+如前述，Async提供各種非同步模式的流程控制功能，包括serial、parallel，與waterfall。
+
+範例：使用`async.waterfall`以`fs.readFile`開啟並讀取資料檔案，執行同步字串替換，然後以`fs.writeFile`輸出字串回檔案。
+
+```
+var fs = require('fs'),
+    async = require('async');
+
+async.waterfall([
+    function readData(callback) {
+        fs.readFile('./data/data1.txt', 'utf8', function(err, data) {
+            callback(err, data);
+        });
+    },
+    function modify(text, callback) {
+        var adjdata = text.replace(/somecompany\.com/g, 'burningbird.net');
+        callback(null, adjdata);
+    },
+    function writeData(text, callback) {
+        fs.writeFile('./data/data1.txt', text, function(err) {
+            callback(err, text);
+        })
+    }
+], function(err, result) {
+    if (err) {
+        console.error(err.message);
+    } else {
+        console.log(result);
+    }
+});
+```
+
+async.waterfall有兩個參數：
+
+- 工作陣列
+- 選擇性的最終callback函式
+
+每個非同步任務函式是`async.waterfall`陣列的一個元素，每個函式需要一個callback作為最後一個參數。此callback函式讓我們能鏈接非同步callback結果而不需實際上套疊程式。如你所見，每個函式的callback如同使用套疊callback一樣的處理一無需在每個函式中檢查錯誤。Async在每個callback中檢視第一個參數是否為錯誤物件。如果我們在callback中傳遞錯誤物件，行程會在此結束並呼叫最終的callback。然後最終的callback處理錯誤或最後的結果。
