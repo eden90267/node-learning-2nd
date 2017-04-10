@@ -275,3 +275,260 @@ contextualized
 runInContext()函式支援runInThisContext()與runInNewContext()函式支援的三個選項。
 
 Script執行函式與直接在VM中執行函式的差別是Script物件預先編譯程式且在建構物件時傳入檔名而非作為函式呼叫的選項。
+
+## 深入探索npm
+
+許多Node功能來自第三方模組:
+
+- 路由器模組
+- 操作關聯式模組
+- 文件資料庫模組
+- 樣板模組
+- 測試模組
+- 甚或是付款機制模組
+
+比起原始檔下載安裝，使用npm更簡單。
+
+Node安裝附有npm，但不一定是最新版。可更新版本：
+
+```
+$ npm install npm -g
+```
+
+以下列命令取得npm命令的概要：
+
+```
+$ npm help npm
+```
+
+模組可全域與區域安裝。如果正進行隔離的專案請共用同一個系統的人並不需要存取該模組，區域安裝是最好的方式。
+
+```
+$ npm install modulename
+```
+
+以安裝request為例:
+
+```
+$ npm install request
+```
+
+npm不只安裝Request，它還會檢查模組相依性並安裝它。
+
+模組安裝完成後，你可在本地目錄下node_modules目錄找到該模組，相依檔案也是。
+
+如果想全域安裝，使用-g或--global選項：
+
+```
+$ npm install request -g
+```
+
+如果使用linux，安裝全域模組別忘了使用`sudo`。
+
+有些模組，包括命令列應用程式，必須全域安裝。這些範例安裝套件登錄於npm網站。你也可以安裝檔案系統中檔案夾內的模組，或從本機與URL取得tarball：
+
+```
+npm install http://somecompany.com/somemodule.tgz
+```
+
+如果套件有分版本，可安裝指定版本：
+
+```
+npm install modulename@0.1
+```
+
+如果不須使用某模組，可移除：
+
+```
+npm uninstall modulename
+```
+
+下列命令告訴npm檢查新模組並執行找到的更新：
+
+```
+npm update
+```
+
+或更新單一模組
+
+```
+npm update modulename
+```
+
+如果只想檢查套件是否過期：
+
+```
+npm outdated
+```
+
+再一次，你可以對單一模組執行此命令。
+
+以`list`、`ls`、`la`或`ll`列出安裝過的套件與相依檔案。
+
+la與ll選項提供更多資訊。舉例：`npm la request`列出相依檔案的細節。
+
+有時輸出會顯示警告，像是缺少相依檔案或需要舊版模組，則安裝該模組或必要的版本:
+
+```
+npm install jsdom@0.2.0
+```
+
+也可使用`-d`旗標直接安裝所有相依模組。舉例來說，在模組的目錄下輸入此命令:
+
+```
+npm install -d
+```
+
+如果想要安裝還沒對npm登記的模組版本，可從Git程式庫直接安裝:
+
+```
+npm install https://github.com/visionmedia/express/tarball/master
+```
+
+但須謹慎使用，安裝尚未釋出版本的模組並執行npm更新，npm登記的版本會覆寫掉你正使用的版本。
+
+檢視哪些模組全域安裝：
+
+```
+npm ls -g
+```
+
+可使用config命令了解你的npm安裝，下列命令列出npm組態設定：
+
+```
+npm config list
+```
+
+可取得更深入的組態設定：
+
+```
+npm config ls -l
+```
+
+可透過命令列修改或移除組態設定
+
+```
+npm config delete keyname
+npm config set keyname value
+```
+
+或直接修改組態檔案
+
+```
+$ npm config edit
+```
+
+※ 強烈建議不要碰。除非你非常確定修改作用
+
+可使用任何關鍵字搜尋模組
+
+```
+$ npm search html5 parser
+NAME                      | DESCRIPTION          | AUTHOR          | DATE       | VERSION  | KEYWORDS
+fabric                    | Object model for…    | =asturur…       | 2017-03-25 | 1.7.9    |
+context-parser            | HTML5 Context Parser | =neraliu…       | 2015-07-10 | 2.0.1    |
+352-fabric                | Object model for…    | =dvideby0       | 2017-01-24 | 1.7.8    |
+safe-html                 | A whitelist-based…   | =almost         | 2016-03-23 | 1.0.0    |
+parse-srcset              | A spec-conformant…   | =albell         | 2016-12-10 | 1.0.2    |
+browser-x                 | A partial…           | =aui            | 2017-02-13 | 0.0.1-b… |
+parsonic                  | Ultra fast HTML5…    | =oabtm          | 2016-11-19 | 2.1.0    |
+html5                     | HTML5 HTML parser,…  | =aredridel      | 2014-08-12 | 1.0.5    |
+html5-parser              | html5 parser for…    | =niklasvh       | 2014-09-18 | 0.1.1    |
+neutron-html5parser       | Small Pure-JS HTML5… | =munawwar       | 2015-04-16 | 0.2.0    |
+html5-papandreou          | HTML5 HTML parser,…  | =maartenwinter… | 2016-05-30 | 0.3.15-… |
+gumbo-node                | A node.js wrapper…   | =eric.oconnell  | 2013-08-22 | 0.1.2    |
+mp4js                     | A modern MP4 parser… | =lmaa           | 2013-11-03 | 0.0.2    |
+kaj                       | A Kaj to HTML5…      | =jakwings       | 2015-05-15 | 0.11.1   |
+react-native-html5        | html, html5 parser…  | =pillys         | 2016-06-25 | 0.2.2    |
+dedom                     | A partial…           | =mbostock       | 2015-01-23 | 0.0.1    |
+id3js                     | A modern ID3 parser… | =43081j         | 2014-05-11 | 1.1.3    |
+html5-chase               | HTML5 HTML parser,…  | =infinityatlas  | 2012-10-05 | 0.3.9    |
+```
+
+第一次執行搜尋，npm會建構索引，會花幾分鐘。
+
+※ 收到"registry error parsing json"錯誤：可使用npm鏡像來完成任務。下列命令使用歐洲鏡像：`npm --registry http://registry.npmjs.eu/ search html5 parser`(執行會失敗...)
+
+npm網站提供可瀏覽的模組紀錄與最新模組相依排行一也就是其他模組或Node應用程式最常使用的模組。
+
+第一次操作npm，你或許會注意到輸出後面的一組警告訊息：
+
+- 第一行表示無法找到package.json檔案
+- 其餘訊息是找不到package.json有關的警告
+
+npm文件建議你建構package.json檔案來維護你的區域相依性。
+
+要在專案目錄建構預設的package.json檔案，執行以下命令：
+
+```
+npm init --yes
+```
+
+如此就會在專案目錄建構預設的package.json檔案。
+
+- 姓名、專案名稱等有預設值的一組基本問題
+- JSON加上description
+- JSON加上repository
+
+此外，想更新此檔案以反映新安裝的模組，使用下列命令：
+
+```
+npm install request --save-dev
+```
+
+這會儲存模組名稱與版本到package.json檔案中的devDependencies欄位中。你也可儲存模組到生產相依性中。
+
+要自動儲存相依性，你可以修改npmrc檔案。你可根據每個使用者(~/.npmrc)、每個專案(/path/project/.npmrc)、全域($PREFIX/etc/npmrc)，與使用內建組態檔案(/path/to/npm/npmrc)加入。
+
+使用下列命令修改個人設定以自動的儲存相依性：
+
+```
+npm config set save=true
+npm config set save-exact=true
+```
+
+這會在你安裝新套件，自動加上`--save`旗標(將套件儲存在相依性)與`--save-exact`旗標(實際儲存一個版本而非npm的預設語意版本範圍)。
+
+還有許多不同的組態設定可調整，見npm文件。
+
+## 建構與發佈你自己的Node模組
+
+你必須採取幾個額外的步驟以將你的JavaScript函式庫轉換成Node使用的模組。
+
+### 建構模組
+
+假設有個JavaScript函式庫函式稱為`concatArray`，它取用一個字串與一個字串陣列並結合兩者成為一個新的陣列:
+
+```
+function concatArray(str, array) {
+    return array.map(function(element) {
+        return str + ' ' + element;
+    });
+}
+```
+
+為將你的JavaScript函式庫轉換成Node使用的模組，你必須使用exports物件匯出要顯露的函式:
+
+```
+exports.concatArray = function(str,array) {
+    return array.map(function(element) {
+        return str + ' ' + element;
+    });
+}
+```
+
+現在匯出的函式可用於你的應用程式中：
+
+```
+var newArray = require('./arrayfunctions.js');
+
+console.log(newArray.concatArray('hello', ['test1','test2']));
+```
+
+也可以建構由物件建構元或函式組成的模組並使用`module.exports`匯出。
+
+例如受到大量相依的Mime模組建構了Mime()函式：
+
+```
+
+```
