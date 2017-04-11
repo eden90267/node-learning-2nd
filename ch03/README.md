@@ -867,3 +867,72 @@ async.waterfall有兩個參數：
 - 選擇性的最終callback函式
 
 每個非同步任務函式是`async.waterfall`陣列的一個元素，每個函式需要一個callback作為最後一個參數。此callback函式讓我們能鏈接非同步callback結果而不需實際上套疊程式。如你所見，每個函式的callback如同使用套疊callback一樣的處理一無需在每個函式中檢查錯誤。Async在每個callback中檢視第一個參數是否為錯誤物件。如果我們在callback中傳遞錯誤物件，行程會在此結束並呼叫最終的callback。然後最終的callback處理錯誤或最後的結果。
+
+※ 使用具名函式，可簡化除錯與錯誤處理。
+
+更複雜的套疊callback：
+
+從目錄取得物件、檢查檔案、讀取檔案測試、修改、並寫回紀錄結果
+
+```
+var fs = require('fs'),
+    async = require('async'),
+    _dir = './data/';
+
+var writeStream = fs.createWriteStream('./log.txt', {
+    'flags': 'a',
+    'encoding': 'utf8',
+    'mode': 0666
+});
+
+async.waterfall([
+    function readDir(callback) {
+        fs.readdir(_dir, function(err, files) {
+            callback(err, files);
+        });
+    },
+    function loopFiles(files, callback) {
+        files.forEach(function(name) {
+            callback(null, name);
+        });
+    },
+    function checkFile(file, callback) {
+        fs.stat(_dir + file, function(err, stats) {
+            callback(err, stats, file);
+        });
+    },
+    function readData(stats, file, callback) {
+        if (stats.isFile()) {
+            fs.readFile(_dir + file, 'utf8', function(err, data) {
+                callback(err, file, data);
+            });
+        }
+    },
+    function modify(file, text, callback) {
+        var adjdata = text.replace(/somecompany\.com/g, 'burningbird.net');
+        callback(null, file, adjdata);
+    },
+    function writeDate(file, text, callback) {
+        fs.writeFile(_dir + file, text, function(err) {
+            callback(err, file);
+        });
+    },
+    function logChange(file, callback) {
+        writeStream.write('changed ' + file + '\n', 'utf8', function(err) {
+            callback(err);
+        })
+    }
+], function(err){
+    if (err) {
+        console.error(err.message);
+    } else {
+        console.log('modified files');
+    }
+});
+```
+
+注意有更多的資料傳遞給callback。大部分函式需要檔名與文字，因此會在最後幾個方法中傳遞。任何數量的資料可在方法中傳遞，只要第一個參數是錯誤文件(無錯誤則null)且每個函式最後一個參數是callback函式。
+
+我們不須對每個非同步的任務函式檢查錯誤，因為Async在每個callback中檢查錯誤，如果發現錯誤則停止處理並呼叫最終callback函式。
+
+其他Async流程控制方法：async.parallel與async.serial，以類似方式執行，以第一個方法參數為任務陣列以及選擇性的callback做為第二個參數，但它們處理非同步方式如你預期不同。
