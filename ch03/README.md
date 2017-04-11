@@ -935,4 +935,173 @@ async.waterfall([
 
 我們不須對每個非同步的任務函式檢查錯誤，因為Async在每個callback中檢查錯誤，如果發現錯誤則停止處理並呼叫最終callback函式。
 
-其他Async流程控制方法：async.parallel與async.serial，以類似方式執行，以第一個方法參數為任務陣列以及選擇性的callback做為第二個參數，但它們處理非同步方式如你預期不同。
+其他Async流程控制方法：`async.parallel`與`async.serial`，以類似方式執行，以第一個方法參數為任務陣列以及選擇性的callback做為第二個參數，但它們處理非同步方式如你預期不同。
+
+`async.parallel`：一併呼叫所有非同步方法，全部完成時呼叫選擇性的最終callback。範例，使用`async.parallel`平行讀入三個檔案的內容。此範例使用Async支援的其他方式：傳入將每個非同步任務作為**屬性**的物件。然後在三項工作都完成時輸出結果到控制台。
+
+```
+var fs = require('fs'),
+    async = require('async');
+
+async.parallel({
+    data1: function(callback) {
+        fs.readFile('./data/fruit1.txt', 'utf8', function(err, data) {
+            callback(err, data);
+        });
+    },
+    data2: function(callback) {
+        fs.readFile('./data/fruit2.txt', 'utf8', function(err, data) {
+            callback(err, data);
+        });
+    },
+    data3: function(callback) {
+        fs.readFile('./data/fruit3.txt', 'utf8', function(err, data) {
+            callback(err, data);
+        });
+    }
+}, function(err, result) {
+    if (err) return console.log(err.message);
+    console.log(result); // { data1: 'apples', data2: 'oranges', data3: 'peaches' }
+});
+```
+
+記住使用Async的流程控制方法時，你只需傳遞callback給每個非同步任務並在結束時呼叫此callback，回傳錯誤物件(or null)與任何所需的資料。
+
+### 使用Commander
+
+Commander提供命令列選項的支援，它們是執行應用程式時的旗標，像是使用工具或應用程式說明的`-h`或`--help`。
+
+```
+npm install commander
+```
+
+```
+var program = require('commander');
+```
+
+鏈接應用程式所支援的各種選項呼叫來使用它。下面程式碼，應用程式支援預設選項一版本的`-V`或`--version`以及輔助說明的`-h`或`--help`一以及兩個自訂選項：來源網站的`-s`或`--source`與檔名的`-f`或`--file`：
+
+```
+var program = require('commander');
+
+program
+    .version('0.0.1')
+    .option('-s, --source [web site]', 'Source web site')
+    .option('-f, --file [file name]', 'File name')
+    .parse(process.argv);
+
+console.log(program.source);
+console.log(program.file);
+```
+
+我們提供自訂選項，而Commander提供預設的版本與輔助功能說明選項。執行應用程式：
+
+```
+$ node options -h
+
+  Usage: options [options]
+
+  Options:
+
+    -h, --help               output usage information
+    -V, --version            output the version number
+    -s, --source [web site]  Source web site
+    -f, --file [file name]   File name
+
+```
+
+Commander會輸出可用的選項。
+
+短選項可以連接，例如`-sf`，而Commander會加以處理。它也可處理如--file-name等multiwork選項，並使用Camel-casing結果：program.fileName。
+
+Commander還支援coercion(型別轉換)：
+
+```
+.option('-i, --integer <n>', 'An integer argument', parseInt);
+```
+
+正規表示式：
+
+```
+.option('-d --drink [drink]', 'Drink', /^(coke|pepsi|izze)$/i);
+```
+
+以及最後一個選項的**可變長度**參數，這表示它可以取用任意數量的參數。或許你的應用程式支援不明數量的多個關鍵字，可這樣建構Command選項：
+
+```
+var program = require('commander');
+
+program
+    .version('0.0.1')
+    .command('keyword <keyword> [otherKeywords...]')
+    .action(function (keyword, otherKeywords) {
+        console.log('keyword %s', keyword);
+        if (otherKeywords) {
+            otherKeywords.forEach(function (oKey) {
+                console.log('keyword %s', oKey);
+            });
+        }
+    });
+
+program.parse(process.argv);
+```
+
+```
+$ node options2 keyword one two three
+keyword one
+keyword two
+keyword three
+```
+
+Commander對命令列應用程式特別有用。
+
+### 無所不在的Underscore
+
+```
+npm install underscore
+```
+
+根據開發者的說法：Underscore是Node的工具袋函式庫。它提供像是jQuery或Prototype.js等第三方函式庫的JavaScript擴充功能。
+
+Underscore如此命名是因為它的函式通常以底線(_)呼叫：
+
+```
+var _ = require('underscore');
+_.each(['apple', 'cherry'], function(fruit) {
+    console.log(fruit);
+});
+```
+
+當然，底線字元的問題在REPL有特定意義。不用擔心，我們可使用us變數代替：
+
+```
+var us = require('underscore');
+us.each(['apple', 'cherry'], function(fruit) {
+    console.log(fruit);
+});
+```
+
+Underscore提供擴充的：
+
+- 陣列
+- 集合
+- 函式
+- 物件
+- 鏈接
+- 一般功能
+
+說明文件可從[官網](htttp://underscorejs.org/)取得。
+
+這裡說明一個很棒的功能：透過`mixin`函式以受控的方式用你自己的工具擴充Underscore功能。我們可在REPL中快速嘗試它與其他方法：
+
+```
+> var us = require('underscore');
+> us.mixin({betterWithNode: function(str) { return str + ' is better with Node'; }});
+undefined
+> console.log(us.betterWithNode('chocolate'));
+chocolate is better with Node
+```
+
+※ mixin：它表示一種將物件的屬性加入到另一個物件("mixed in")的模式
+
+Underscore並非唯一的高評價模組，還有`lodash`。建議兩者都研究一下。
