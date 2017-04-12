@@ -264,4 +264,67 @@ REPL上想儲存，可使用`.save`命令儲存目前內容。
 
 ### REPL命令
 
-REPL有簡單的介面與一組實用的命令。
+REPL有簡單的介面與一組實用的命令。`.save`可將目前內容儲存到檔案中。除非下令建構新的物件背景或使用`.clear`命令，否則內容會包含在所有REPL的輸入：
+
+```
+> .save ./dir/session/save.js
+```
+
+只有你的輸入會儲存。
+
+以下列出REPL命令與其功能：
+
+- .break
+
+    如果輸入多行時忘記位置，輸入.break可重新開始，前面的輸入會被清除
+
+- .clear
+
+    重置背景物件並清除所有表達式。此命令基本上就是重新開始
+
+- .exit
+
+    結束REPL
+
+- .help
+
+    顯示所有REPL命令
+
+- .save
+
+    儲存目前REPL過程到檔案中
+
+- .load
+
+    載入檔案(`.load /path/to/file.js`)
+
+
+### REPL與rlwrap
+
+設定環境變數以在REPL上使用rlwrap
+
+rlwrap工具是將GNU的readline函式庫功能加到命令列以加強鍵盤輸入彈性的包裝程式。它攔截鍵盤輸入並提供額外的功能，像是加強版的行編輯及命令歷史紀錄保存。
+
+你必須安裝rlwrap與readline以在REPL中使用其功能。
+
+```
+$ apt-get install rlwrap
+```
+
+以下是在RPEL上使用rlwrap來改變REPL提示成紫色的示範：
+
+```
+NODE_NO_READLINE=1 rlwrap --ppurple node
+```
+
+想永久改變，可在我的bashrc檔案加上別名：
+
+```
+alias node="NODE_NO_READLINE=1 rlwrap --ppurple node"
+```
+
+有要改變提示與顏色：
+
+```
+NODE_NO_READLINE=1 rlwrap --ppurple -S "::>" node
+```
