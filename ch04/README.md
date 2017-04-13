@@ -610,5 +610,221 @@ logger.log(`count: %d`, count);
 
 ### 以util.format()與util.inspect()輔助訊息格式化
 
-console的log()、warn()、error()與info()四個函式可以取用任何資料型別，包括物件。非字串的非物件值會強制轉換成字串。如果資料型別是物件，要注意Node只會輸出兩層，你應該對物件使用`JSON.stringify()`，他會輸出更可讀的縮排樹：
+console的log()、warn()、error()與info()四個函式可以取用任何資料型別，包括物件。非字串的非物件值會強制轉換成字串。如果資料型別是物件，要注意Node只會輸出**兩**層，你應該對物件使用`JSON.stringify()`，他會輸出更可讀的縮排樹：
 
+```
+var test = {
+    a:{
+        b:{
+            c:{
+                d: 'test'
+            }
+        }
+    }
+};
+
+// 只輸出兩層
+console.log(test);
+
+// 輸出三層
+var str = JSON.stringify(test, null, 3);
+console.log(str);
+```
+
+如果使用字串，你可對這四個函式使用類似printf的格式化：
+
+```
+var val = 10.5;
+var str = 'a string';
+
+console.log(`The value is %d and the string is %s`, val, str);
+```
+
+這在資料作為函式參數或搜集自網頁請求時很方便。格式化的類型是根據`util.format()`工具模組支援的格式化進行，也可直接使用：
+
+```
+var util = require('util');
+
+var val = 10.5,
+    str = 'a string';
+
+var msg = util.format('The value is %d and the string is %s', val, str);
+console.log(msg);
+```
+
+若只使用此函式，`console.log`比較方便。可用的格式值：
+
+- %s：字串
+- %d：數字
+- %j：JSON。如果參數帶有循環參考則會替換成['circular']
+- %%：使用百分比符號實作(%)
+
+取出的參數會轉換成字串並連接到輸出。如果參數太少會輸出它本身。
+
+```
+var val = 3;
+
+console.log(`val is %d and str is %s`, val);
+```
+
+此處討論的四個函式不是唯一回饋方式，還有`console.dir()`。
+
+`console.dir()`函式與其他回饋函式不同在於傳入的物件會傳給`util.inspect()`。此工具模組函式透過options物件提供有限的顯示控制。如同util.format()，他也可以直接使用：
+
+```
+var test = {
+    a:{
+        b:{
+            c:{
+                d: 'test'
+            }
+        }
+    }
+};
+
+var str = require('util').inspect(test, {showHidden: true, depth: 4});
+console.log(str);
+```
+
+物件被檢查並根據options物件將結果以字串回傳。選項有：
+
+- showHidden：顯示不可列舉或符號特性(default是false)
+- depth：檢查物件的遞迴次數(default是2)
+- colors：若為true則使用ANSI顏色編碼輸出(default是false)
+- customInspect：若為false則不呼叫自訂檢查函式(default是true)
+
+色彩對應可使用`util.inspect.styles`物件全域定義。你也可以修改全域色彩。使用console.log()輸出此物件的屬性。
+
+```
+var util = require('util');
+
+console.log(util.inspect.styles);
+console.log(util.inspect.colors);
+```
+
+其結果：
+
+```
+{ special: 'cyan',
+  number: 'yellow',
+  boolean: 'yellow',
+  undefined: 'grey',
+  null: 'bold',
+  string: 'green',
+  symbol: 'green',
+  date: 'magenta',
+  regexp: 'red' }
+{ bold: [ 1, 22 ],
+  italic: [ 3, 23 ],
+  underline: [ 4, 24 ],
+  inverse: [ 7, 27 ],
+  white: [ 37, 39 ],
+  grey: [ 90, 39 ],
+  black: [ 30, 39 ],
+  blue: [ 34, 39 ],
+  cyan: [ 36, 39 ],
+  green: [ 32, 39 ],
+  magenta: [ 35, 39 ],
+  red: [ 31, 39 ],
+  yellow: [ 33, 39 ] }
+```
+
+範例：
+
+- 修改被輸出的物件以加上日期、數字與布林。
+- 布林值顏色從黃色改成藍色以區分數字(預設都是黃色)
+- 物件使用不同方法輸出
+
+    - 以`util.inspect()`處理後使用`console.dir()`加上相同選項
+    - 使用基本的`console.log()`函式
+    - 使用物件上的`JSON.stringify()`函式
+
+    
+```
+var util = require('util');
+
+var today = new Date();
+
+var test = {
+    a: {
+        b: {
+            c: {
+                d: 'test'
+            },
+            c2: 3.50
+        },
+        b2: true
+    },
+    a2: today
+};
+
+util.inspect.styles.boolean = 'blue';
+
+// 以util.inspect直接格式化
+var str = util.inspect(test, { depth: 4, colors: true });
+console.log(str);
+
+// 使用console.dir與選項輸出
+console.dir(test, { depth: 4, colors: true });
+
+// 使用基本的console.log輸出
+console.log(test);
+
+// 和JSON.stringify
+console.log(JSON.stringify(test, null, 4));
+```
+
+結果：
+
+![util_inspect_result](./util_inspect_result.png)
+
+※ console.dir()函式支援util.inspect()四個選項中的三個：showHidden、depth，與colors。它不支援customInspect。如果設為true，此選項表示物件實際上提供自己的檢查函式。
+
+### 以控制台與計時器提供更多回饋
+
+回到console物件，另一個提供更多應用程式資訊的方式是加上計時器並輸出開始與結束時間。
+
+- `console.time()`
+- `console.timeEnd()`
+
+兩者都傳入計時器名稱
+
+```
+console.time('the-loop');
+
+for (var i = 0; i < 10000; i++) {
+    ;
+}
+
+console.timeEnd('the-loop');
+```
+
+結果：
+
+```
+the-loop: 0.160ms
+```
+
+計時器不限於同步事件，也可在非同步事件上使用(因能指定計時器名稱)。
+
+```
+var http = require('http');
+
+console.time('hello-timer');
+http.createServer(function(req, res) {
+    res.writeHead(200, {'Content-Type': 'text/plain'});
+    res.end('Hello World\n');
+    console.timeEnd('hello-timer');
+    console.time('hello-timer');
+}).listen(8124);
+
+console.log(`Server running at http:/127.0.0.1:8124`);
+```
+
+```
+Server running at http:/127.0.0.1:8124
+hello-timer: 17748.353ms
+hello-timer: 266.663ms
+hello-timer: 10397.440ms
+hello-timer: 101.871ms
+```
