@@ -611,3 +611,4 @@ logger.log(`count: %d`, count);
 ### 以util.format()與util.inspect()輔助訊息格式化
 
 console的log()、warn()、error()與info()四個函式可以取用任何資料型別，包括物件。非字串的非物件值會強制轉換成字串。如果資料型別是物件，要注意Node只會輸出兩層，你應該對物件使用`JSON.stringify()`，他會輸出更可讀的縮排樹：
+
