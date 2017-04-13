@@ -328,3 +328,220 @@ alias node="NODE_NO_READLINE=1 rlwrap --ppurple node"
 ```
 NODE_NO_READLINE=1 rlwrap --ppurple -S "::>" node
 ```
+
+如此提示會是(還是紫色的)：
+
+```
+::> 
+```
+
+rlwrap特別有用的元件是跨REPL過程的歷史紀錄儲存能力。使用rlwrap，操作REPL能存取過去的歷史紀錄(以及其他命令列輸入)。
+
+但每次輸入沒有回傳值的表示式會得到undefined。然而我們可以建構**自訂的REPL**來調整這個功能與其他功能。
+
+### 自訂REPL
+
+Node提供的API可用來建構自訂的REPL。首先須引用REPL模組：
+
+```
+var repl = require('repl');
+```
+
+為建構新的REPL，我們呼叫repl物件的start方法
+
+```
+repl.start(options);
+```
+
+options物件取用數個值；我想強調的是:
+
+- prompt
+
+    預設為>
+
+- input
+
+    可讀串流；預設為process.stdin
+
+- output
+
+    可寫串流；預設為process.stdout
+
+- eval
+
+    預設為eval的async
+
+- useGlobal
+
+    預設false以啟動新的背景而非使用全域物件
+
+- useColors
+
+    設定writer函式是否使用顏色。預設為REPL的terminal值
+
+- ignoreUndefined
+
+    預設為false：不忽略undefined回應
+
+- terminal
+
+    若串流應該當作tty(終端機)處理則設為true，包括ANSI/VT100跳脫碼的資源
+
+- writer
+
+    對命令列求值與回傳格式化的函式。預設為util.inspect
+
+- replMode
+
+    設定strict、default，或hybrid模式
+
+※ Node 5.8.0開始，repl.start()不再需要options物件。
+
+
+建構自訂的REPL：
+
+```
+var repl = require('repl');
+
+repl.start({
+    prompt: 'my repl> ',
+    replMode: repl.REPL_MODE_STRICT,
+    ignoreUndefined: true,
+})
+```
+
+使用Node執行此稱為repl.js的檔案：
+
+```
+$ node repl
+my repl> let ct = 0;
+my repl> ct++;
+0
+my repl> console.log(ct);
+1
+my repl> ++ct;
+2
+my repl> console.log(ct);
+2
+my repl>
+```
+
+提示不一樣，惱人的undefined也不再有了。
+
+options物件中沒列出的其他屬性會使用預設值。
+
+可在自訂的REPL中替換eval函式，唯一要求是它具下列格式：
+
+```
+function eval(cmd, callback) {
+    callback(null, result);
+}
+```
+
+input與output選項範例：Node.js官網的REPL文件有提供下列傾聽TCP socket的REPL
+
+```
+var net = require("net"),
+    repl = require("repl");
+
+connections = 0;
+
+repl.start({
+    prompt: "node via stdin>",
+    input: process.stdin,
+    output: process.stdout
+});
+
+net.createServer(function (socket) {
+    connections += 1;
+    repl.start({
+        prompt: "node via Unix socket>",
+        input: socket,
+        output: socket
+    }).on('exit', function() {
+        socket.end();
+    })
+}).listen("/tmp/node-repl-sock");
+
+net.createServer(function(socket) {
+    connections+=1;
+    repl.start({
+        prompt: "node via TCP socket>",
+        input: socket,
+        input: socket
+    }).on('exit', function() {
+        socket.end();
+    });
+}).listen(5001);
+```
+
+Linux的Telnet用戶端沒問題。但從Telnet執行REPL不在計畫中，不推薦這麼做一至少不能沒有高度安全性。如同用戶端程式使用`eval()`且沒檢查使用者輸入要執行的內容。
+
+可透過Unix的Socket與GNU的Netcat之類的工具執行REPL並保持通訊：
+
+```
+nc -U /tmp/node-repl-sock
+```
+
+可如同使用stdin一般輸入命令。但要注意如果使用TCP或Unix的socket，console.log命令會輸出到伺服器控制台。
+
+作者覺得更實用的REPL應用程式選項是預先載入模組。
+
+以下REPL啟動後，預載入Request(HTTP用戶端)、Underscore(工具函式庫)與Q(promise管理)模組會被載入並指派給背景屬性：
+
+```
+var repl = require('repl');
+var context = repl.start({
+    prompt: '>> ',
+    ignoreUndefined: true,
+    replMode: repl.REPL_MODE_STRICT
+}).context;
+
+context.request = require('request');
+context.underscore = require('underscore');
+context.q = require('q');
+```
+
+然後我們可以存取這些模組：
+
+```
+>> request('http://burningbird.net/phoenix5sm.png').pipe(fs.createWriteStream('bird.png'));
+```
+
+如果想如同Linux上的可執行檔案一樣執行REPL應用程式，在應用程式加上以下內容作為第一行：
+
+```
+#!/usr/local/bin/node
+```
+
+修改檔案成可執行檔並執行：
+
+```
+$ chmod u+x replcontext.js
+$ ./replcontext.js
+```
+
+## 天有不測風雲，經常存檔
+
+REPL讓我們開發工作較為簡單。REPL不只讓我們在引入JavaScript前進行測試，還可互動的建構應用程式然後於完成時儲存檔案。
+
+另一個好用的REPL功能是它讓我們建構自訂的REPL以消除無意義的undefined回應、預先載入模組、改變提示符號或eval程序等。
+
+強烈建議使用REPL時加上rlwrap以跨交談過程儲存命令，如此可省下大量時間。
+
+但有個重點要記住：天有不測風雲，經常存檔!!
+
+## 控制台的必須品
+
+控制台是輸出值、檢查操作、檢驗應用程式非同步本質，與提供回饋的方式。
+
+控制台有比瀏覽器的警告對話框有更多的內容。
+
+### 控制台訊息型別、控制台類別與阻斷
+
+`console.log`此函式輸出訊息到stdout，通常是終端機。當你開始為交付環境打造Node應用程式時，你會想要使用其他的控制台訊息函式。
+
+- console.info()函式等同console.log()，兩者都輸出到stdout；兩者的輸出訊息都帶有換行字元
+- console.error()還是則輸出到stderr(同樣帶有換行字元)
+
+console.warm()函式也一樣。
