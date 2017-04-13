@@ -541,7 +541,73 @@ REPL讓我們開發工作較為簡單。REPL不只讓我們在引入JavaScript�
 
 `console.log`此函式輸出訊息到stdout，通常是終端機。當你開始為交付環境打造Node應用程式時，你會想要使用其他的控制台訊息函式。
 
-- console.info()函式等同console.log()，兩者都輸出到stdout；兩者的輸出訊息都帶有換行字元
-- console.error()還是則輸出到stderr(同樣帶有換行字元)
+- `console.info()`函式等同`console.log()`，兩者都輸出到stdout；兩者的輸出訊息都帶有換行字元
+- `console.error()`函式則輸出到stderr(同樣帶有換行字元)
 
-console.warm()函式也一樣。
+`console.warm()`函式也一樣。
+
+為理解差別性，必須深入檢視：
+
+※ 使用紀錄模組：更複雜的工具可用，例如Bunyan與Winston模組。
+
+首先，console物件是從Console類別初始化的全域物件。如果要的話，可使用一個類別建構自己的console。這有兩個方式：
+
+要建構新的Console實例，必須匯入Console類別或透過全域的console物件存取：
+
+```
+var Console = require('console').Console;
+
+var cons = new Console(process.stdout, process.stderr);
+cons.log('testing');
+
+var cons2 = new console.Console(process.stdout, process.stderr);
+cons2.error('test');
+```
+
+`process.stdout`與`process.stderr`屬性作為可寫入的串流實例傳遞以輸出紀錄訊息與錯誤訊息。console全域物件也是以這種方式建構。
+
+`process.stdout`與`process.stderr`，它們對應環境中的stdout與stderr，且與大部分Node串流不同的是它們通常會阻斷一它們是同步的。唯一非同步的時候是串流被導向到pipe上。大部分情況下，console物件會被`console.log()`與`console.error()`阻斷。但這不會是問題，除非你導引大量資料到串流上。
+
+發生錯誤要使用console.error() ?
+
+- 如果處於紀錄訊息不會阻斷但錯誤訊息會阻斷的環境中，你會想要確保Node錯誤會阻斷。
+- Node應用程式，可使用命令列重新導向功能將console.log()與console.error()的輸出導向到不同檔案。
+
+```
+console.log('this is informative');
+console.info('this is more information');
+
+console.error('this is an error');
+console.warn('but this is only a warning');
+```
+
+```
+node app.js 1> app.log 2> error.log
+```
+
+回到Console類別，你可以使用Console類別並傳入process.stdout與process.stderr來複製全域console物件的功能。你也可以建構新的控制台物件，將輸出導向不同的串流，例如紀錄與錯誤檔案。
+
+Node Foundation提供Console文件有個範例：
+
+```
+var fs = require('fs');
+var Console = require('console').Console;
+
+var output = fs.createWriteStream('./stdout.log');
+var errorOutput = fs.createWriteStream('./stderr.log');
+
+// 自訂簡單紀錄工具
+var logger = new Console(output, errorOutput);
+
+// 使用方式如同console
+var count = 5;
+logger.log(`count: %d`, count);
+
+// stdout.log檔案：count: 5
+```
+
+使用這種類型的物件好處是你可以使用全域的console處理一般回饋，保留新建構的物件處理正式的報告。
+
+### 以util.format()與util.inspect()輔助訊息格式化
+
+console的log()、warn()、error()與info()四個函式可以取用任何資料型別，包括物件。非字串的非物件值會強制轉換成字串。如果資料型別是物件，要注意Node只會輸出兩層，你應該對物件使用`JSON.stringify()`，他會輸出更可讀的縮排樹：
