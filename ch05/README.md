@@ -42,3 +42,27 @@ request參數是IncomingMessage類別的實例，它是可讀串流。下列是�
 - `request.method`：http.Server請求才有，回傳HTTP動作(GET或POST)
 - `request.rawHeader`：原始標頭
 - `request.rawTrailers`：原始的trailer
+
+以下檢視`request.headers`與`request.rawHeaders`的不同。注意值在`request.headers`中是屬性，但在`request.rawHeaders`是陣列元素，若要分別存取，屬性是陣列的第一個元素，而值是第二個：
+
+```
+var http = require('http');
+
+var server = http.createServer().listen(8124);
+
+server.on('request', function (req, res) {
+
+    console.log(req.headers);
+    console.log(req.rawHeaders);
+    
+    // // 輸出host值
+    console.log(req.headers.host);
+    console.log(req.rawHeaders[0] + ' is ' + req.rawHeaders[1]);
+
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Hello World!');
+});
+console.log(`server listening on 8124`);
+```
+
+在Node文件中，有些`IncomingMessage`屬性(`statusCode`與`statusMessage`)只能從`HTTP.ClientRequest`物件的回應中取得。除了建構傾聽請求的伺服器外，你也可以使用以`http.request()`函式初始的`ClientRequest類`別建構**發出**請求的用戶端。
