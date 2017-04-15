@@ -66,3 +66,96 @@ console.log(`server listening on 8124`);
 ```
 
 在Node文件中，有些`IncomingMessage`屬性(`statusCode`與`statusMessage`)只能從`HTTP.ClientRequest`物件的回應中取得。除了建構傾聽請求的伺服器外，你也可以使用以`http.request()`函式初始的`ClientRequest類`別建構**發出**請求的用戶端。
+
+為展示伺服器與用戶端功能，這裡建構一個存取本機伺服器的用戶端。在用戶端，建構POST方法發送資料。相較於傾聽request事件，此應用程式傾聽一或多個data事件來取得請求的**區塊資料**(術語：chunk)。應用程式取得chunk直到請求物件收到end事件，然後使用Query String來解析資料並輸出控制台。此時才回傳回應。
+
+```
+var http = require('http');
+var querystring = require('querystring');
+
+var server = http.createServer().listen(8124);
+
+server.on('request', function(req, res) {
+    var body = '';
+
+    // 添加資料
+    req.on('data', function(data) {
+        body += data;
+    });
+
+    // 傳送資料
+    req.on('end', function() {
+        var post = querystring.parse(body);
+        console.log(post);
+        res.writeHead(200, {'Content-Type': 'text/plain'});
+        res.end('Hello World\n');
+    });
+});
+console.log(`server listening on 8124`);
+```
+
+下列用戶端範例，它使用`http.ClientRequest`這個可寫入串流的實作，從範例中的req.write()方法可看得出來。
+
+請求的標頭設定內容類型為application/x-www-form-urlencoded，它是用於送出的資料上。
+
+```
+var http = require('http');
+var querystring = require('querystring');
+
+var postData = querystring.stringify({
+    'msg': 'Hello World!'
+});
+
+var options = {
+    hostname: 'localhost',
+    port: 8124,
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': postData.length
+    }
+};
+
+var req = http.request(options, function(res) {
+    console.log(`STATUS: ` + res.statusCode);
+    console.log(`HEADERS: ` + JSON.stringify(res.headers));
+    res.setEncoding('utf8');
+
+    // 取得區塊資料
+    res.on('data', function(chunk) {
+        console.log(`BODY: ` + chunk);
+    });
+
+    // 結束回應
+    res.on('end', function() {
+        console.log(`No more data in response.`);
+    });
+});
+
+req.on('error', function(e) {
+    console.log(`problem with request: ` + e.message);
+});
+
+// 輸出資料到請求內容
+req.write(postData);
+req.end();
+```
+
+這一切就是兩個程序互相打招呼，但你實作了雙向的用戶端/伺服器溝通並有機會操作POST資料，並認識HTTP模組幾個類別：`http.ClientRequest`、`http.Server`、`http.IncomingMessage`與`http.ServerResponse`。
+
+還沒討論的類別是`http.Agent`，它用於socket的pooling。Node提供維護連線socket的pool以供處理`http.request()`或`http.get()`所做的請求，後者是簡化的無資料GET請求。如果應用程式發出大量請求，它們可能會因為pool數量限制而產生瓶頸，解決辦法是設定請求agent屬性為false以關閉pooling。
+
+```
+var options = {
+  hostname: 'localhost',
+  port: 8124,
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'Content-Length': postData.length
+  },
+  agent: false
+}
+```
+
+也可使用`agent.maxFreeSockets`改變最大pool數量。預設256，但要注意對記憶體與其他資源會產生影響。
