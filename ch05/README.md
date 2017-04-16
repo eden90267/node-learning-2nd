@@ -400,4 +400,182 @@ console.log(`Server web running at 8124`);
 
 ## 使用Apache代理Node應用程式
 
+短期內Node還無法取代Apach等更成熟的網頁瀏覽器，但讓Node處理一些功能而讓伺服器處理其餘功能是個合理選項。
 
+同時執行Node應用程式與Apache的最簡單方式：讓Apache**代理**(proxy)Node服務的請求。由成熟的網頁伺服器在Node應用程式之前過濾請求。Apache提供安全性與其他Node難以實作的功能。但Apache對每個請求產生新的執行緒，而執行緒數量是有限的。
+
+大部分Apache網站的執行與管理很慢。除非想成為主流網站，不然這是好選擇。
+
+要讓Apache代理Node，首先需開啟Apache的代理功能。從命令列發出以下命令：
+
+```
+a2enmod proxy
+a2enmod proxy_http
+```
+
+然後在子網域加上代理：
+
+```
+<VirtualHost ipaddress:80>
+    ServerAdmin eden90267@eden.com
+    DocumentRoot "/usr/docs/eden.com"
+    ServerName eden.com
+    ErrorLog "/private/var/log/apache2/eden.com-error_log"
+    CustomLog "/private/var/log/apache2/eden.com-access_log" common
+    
+    ProxyRequests off
+    
+    <Location />
+        ProxyPass http://ipaddress:2368/
+        ProxyPassReverse http://ipaddress:2368/
+    </Location>
+</VirtualHost>
+```
+
+依據你的環境修改子網域、管理者郵件、埠，與IP位址，然後載入新的子網域
+
+```
+a2ensite eden.com
+service apache2 reload
+```
+
+※ 使用代理並不能防止人們直接使用埠號存取該網站。可透過進階設定防止此事：`iptables -A input -i eth0 -p tcp --dport 2368 -j DROP`
+
+## 以Query String解析查詢
+
+QueryString模組，它唯一功能是查詢字串。
+
+收到查詢字串，可使用`querystring.parse()`將它轉換成物件。預設的查詢字串分隔字(`&amp;`)可使用選擇性的第二個參數覆寫，預設的指派(`=`)可透過第三個參數覆寫。第四個選擇性的參數帶有`decodeURIComponent`，預設為`querystring.unescape()`，如果查詢字串不是UTF-8則加以修改。
+
+```
+var qs = require('querystring');
+
+var q = 'somedomain.com/?value1=valueone&value1=valueoneb&value2=valuetwo';
+
+console.log(require('url').parse(q, true).query);
+
+q = 'value1=valueone&value1=valueoneb&value2=valuetwo';
+
+console.log(qs.parse(q));
+```
+
+使用`querystring.stringify()`發送查詢字串，傳入物件以供編碼。
+
+```
+var qs = require('querystring');
+
+var q = {
+    msg: 'Hello World!'
+};
+
+console.log(qs.stringify(q));
+```
+
+`querystring.stringify()`取用相同的選擇性參數，不同的是最後一個選擇性的物件。`encodeURIComponent`，它的預設值是`querystring.escape()`。
+
+## DNS 解析
+
+你的應用程式不太需要直接使用DNS服務，但若有需要，可用核心DNS模組取得。
+
+檢視兩個DNS模組函式：`dns.lookup()`、`dns.resolve()`。`dns.lookup()`函式可提供網域名稱的第一個回傳IP位址。
+
+```
+var dns = require('dns');
+
+dns.lookup('oreilly.com',function(err, address, family) {
+    if (err) return console.log(err);
+
+    console.log(address); // 回傳的IP位址
+    console.log(family);  // 值是4或6，視位址為IPv4或IPv6而定。
+});
+```
+
+address是回傳的IP位址，family值是4或6，視位址為IPv4或IPv6而定。也可指定options物件：
+
+- family
+
+    4或6，代表想要的位址類型(IPv4或IPv6)
+
+- hints
+
+    支援getaddrinfo旗標，數字
+
+- all
+
+    若為true則回傳所有位址(default: false)
+
+對所有IP感到好奇。這裡消除family參數，存取所有位址時為undefined。我取得所有IP位址物件的陣列，帶有IP位址與family。
+ 
+```
+var dns = require('dns');
+
+dns.lookup('oreilly.com', {all: true}, function(err, family) {
+    if (err) return console.log(err);
+
+    console.log(family);
+});
+```
+
+回傳：
+
+```
+[ { address: '199.27.145.65', family: 4 },
+  { address: '199.27.145.64', family: 4 } ]
+```
+
+dns.resolve()函式解析主機名稱到記錄類型中。類型(字串)為：
+
+- A
+
+    預設IPv4位址
+
+- AAAA
+
+    IPv6位址
+
+- MX
+
+    mail exchange紀錄
+
+- TXT
+
+    文字紀錄
+
+- SRV
+
+    SRV紀錄
+
+- PTR
+
+    保留給反向IP查詢
+
+- NS
+
+    名稱伺服器
+
+- CNAME
+
+    canonical名稱紀錄
+
+- SOA
+
+    start of authority紀錄
+    
+```
+var dns = require('dns');
+
+dns.resolve('oreilly.com', 'MX', function(err, addresses) {
+    if (err) return err;
+    console.log(addresses);
+});
+```
+
+回傳：
+
+```
+[ { exchange: 'alt2.aspmx.l.google.com', priority: 5 },
+  { exchange: 'aspmx3.googlemail.com', priority: 10 },
+  { exchange: 'alt1.aspmx.l.google.com', priority: 5 },
+  { exchange: 'aspmx2.googlemail.com', priority: 10 },
+  { exchange: 'aspmx.l.google.com', priority: 1 } ]
+```
