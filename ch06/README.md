@@ -563,3 +563,228 @@ chmod a+x polaroid
 ```
 
 以建構Polaroid效果的新圖檔。此工具在可執行的地方執行得很好。(Windows、Mac失敗...)。
+
+建構命令列工具與建構獨立應用程式不同，後者表示要在沒有安裝Node(或其他相依檔案)下安裝該應用程式。
+
+※ 以NW.js建構獨立應用程式：Intel的NW.js(之前稱為node-webkit)。可使用它來包裝你的檔案，然後使用提供此功能的nw.JS執行此套件。
+
+## 以ZLib壓縮/解壓縮
+
+ZLib提供壓縮/解壓縮功能。它是轉換串流：
+
+```
+var zlib = require('zlib');
+var fs = require('fs');
+
+var gzip = zlib.createGzip();
+
+var inp = fs.createReadStream('./phoenix5a.png');
+var out = fs.createWriteStream('./phoenix5a.png.gz');
+
+inp.pipe(gzip).pipe(out);
+```
+
+輸入串流直接連接到輸出，中間加上gzip壓縮轉換內容。
+
+Zlib提供zlib或更複雜可控演算法的deflate壓縮。注意，不像zlib可以使用gunzip(或unzip)命令列工具解壓縮，deflate不行。你必須使用Node或其他工具解deflate的壓縮檔案。
+
+以下示範建構兩個命令列工具：壓縮與解壓縮。第一個工具可選擇gzip或deflate。由於需要處理選項，我們會使用Commander模組處理命令列選項：
+
+```
+var zlib = require('zlib');
+var program = require('commander');
+var fs = require('fs');
+
+program
+    .version('0.0.1')
+    .option('-s, --source [file name]', 'Source File Name')
+    .option('-f, --file [file name]', 'Destination File Name')
+    .option('-t, --type <mode>', /^(gzip|deflate)$/i)
+    .parse(process.argv);
+
+var compress;
+if (program.type == 'deflate') {
+    compress = zlib.createDeflate();
+} else {
+    compress = zlib.createGzip();
+}
+
+var inp = fs.createReadStream(program.source);
+var out = fs.createWriteStream(program.file);
+
+inp.pipe(compress).pipe(out);
+```
+
+此工具有趣且有用(特別在沒原生壓縮功能的Windows環境中)，是網路請求中很常見的壓縮技術。 
+
+以下示範如何透過發送壓縮檔給伺服器然後解壓縮。注意發送的資料以分段陣列接收，最終使用`buffer.concat()`建構新的Buffer。因處理是Buffer而非串流，所以無法使用`pipe()`函式。但相對的，使用`zlib.unzip`函式，傳入Buffer與callback函式。此callback函式有錯誤與結果參數，結果也是個Buffer，使用`write()`函式輸出到新建構的可寫串流。為確保區分檔案，使用時間戳記修改檔案名稱。
+
+建構接收壓縮資料並解壓制檔案的網頁伺服器
+
+```
+var http = require('http');
+var zlib = require('zlib');
+var fs = require('fs');
+
+var server = http.createServer().listen(8124);
+
+server.on('request', function(req, res) {
+    
+    if (req.method == 'POST') {
+        var chunks = [];
+
+        req.on('data', function(chunk) {
+            chunks.push(chunk);
+        });
+
+        req.on('end', function() {
+            var buf = Buffer.concat(chunks);
+            zlib.unzip(buf, function(err, result) {
+                if (err) {
+                    res.writeHead(500);
+                    res.end();
+                    return console.log(`error ` + err);
+                }
+                var timestamp = Date.now();
+                var filename = './done' + timestamp + '.png';
+                fs.createWriteStream(filename).write(result);
+            });
+            res.writeHead(200, {'Content-Type': 'text/plain'});
+            res.end('Received and undecompressed file\n');
+        });
+    }
+});
+
+console.log(`server listening on 8124`);
+```
+
+壓縮檔案並發送網頁請求的用戶端(關鍵在於確保設定正確的Content-Encoding標頭，它應該是'gzip, deflate'。Content-Type也設定為'application/javascript')
+
+```
+var http = require('http');
+var fs = require('fs');
+var zlib = require('zlib');
+
+var gzip = zlib.createGzip();
+
+var options = {
+    hostname: 'localhost',
+    port: 8124,
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/javascript',
+        'Content-Encoding': 'gzip,deflate'
+    }
+};
+
+var req = http.request(options, function(res) {
+    res.setEncoding('utf8');
+    var data = '';
+    res.on('data', function(chunk) {
+        data += chunk;
+    });
+
+    res.on('end', function() {
+        console.log(data);
+    });
+
+    req.on('error', function(e) {
+        console.log(`problem with request: ` + e.message);
+    });
+});
+
+// 將壓縮檔案以串流發送至伺服器
+var readable = fs.createReadStream('./test.png');
+readable.pipe(gzip).pipe(req);
+```
+
+在記憶體中緩衝檔案會有擴展性問題，因此另一種方式是儲存壓縮檔案、解壓縮、然後刪除壓縮檔。
+
+## pipe 與 readline
+
+最簡單的pipe示範是啟動REPL並輸入下列程式：
+
+```
+process.stdin.resume();
+process.stdin.pipe(process.stdout);
+```
+
+此後所有輸入都會產生回音。
+
+如果想保持開啟輸出串流，傳入`{ end: false }`選項給輸出串流：
+
+```
+process.stdin.pipe(process.stdout, {end:false});
+```
+
+REPL逐行處理實作：Readline。匯入Readline會啟動不終止的交談。使用下列程式引用：
+
+```
+var readline = require('readline');
+```
+
+注意一旦匯入此模組，Node的程式不會終止，直到你關閉介面。
+
+範例：使用Readline建構簡單的命令導向使用者介面
+
+```
+var readline = require('readline');
+
+// 建構新的介面
+var rl = readline.createInterface(process.stdin, process.stdout);
+
+// 問問題
+rl.question(">>What is the meaning of life? ", function(answer) {
+    console.log(`About the meaning of life, you said ` + answer);
+    rl.setPrompt(">> ");
+    rl.prompt();
+});
+
+// 關閉介面的函式
+function closeInterface() {
+    rl.close();
+    console.log(`Leaving Readline`);
+}
+
+// 傾聽.leave
+rl.on('line', function(cmd) {
+    if (cmd.trim() == '.leave') {
+        closeInterface();
+        return;
+    }
+    console.log(`repeating command: ` + cmd);
+    rl.prompt();
+});
+
+rl.on('close', function() {
+    closeInterface();
+});
+```
+
+執行範例：
+
+```
+>>What is the meaning of life? ===
+About the meaning of life, you said ===
+>> This could be a command
+repeating command: This could be a command
+>> We could add eval in here and actually run this thing
+repeating command: We could add eval in here and actually run this thing
+>> And now you know where REPL comes from
+repeating command: And now you know where REPL comes from
+>> And that using rlwrap replaces this Readline functionality
+repeating command: And that using rlwrap replaces this Readline functionality
+>> Time to go
+repeating command: Time to go
+>> .leave
+Leaving Readline
+Leaving Readline
+```
+
+使用rlwrap覆寫REPL的命令列功能
+
+```
+env NODE_NO_READLINE=1 rlwrap node
+```
+
+一它指示REPL不要使用Node的Readline模組處理命令行，改用rlwrap。
