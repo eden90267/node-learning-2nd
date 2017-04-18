@@ -243,3 +243,323 @@ watcher.on('change', function (path, stats) {
     if (stats) log('File', path, 'changed size to', stats.size);
 })
 ```
+
+### 讀寫檔案
+
+File System模組的範例使用非串流的讀寫方法，以這種非串流功能讀寫檔案有兩種方式：
+
+第一種：`fs.readFile()`或`fs.writeFile()`方法(or同步化版本)。這些函式開啟檔案、讀寫、然後關閉檔案。
+
+```
+var fs = require('fs');
+
+fs.writeFile('./some.txt', 'Writing to a file', function(err) {
+    if (err) return console.error(err);
+    fs.readFile('./some.txt', 'utf-8', function(err, data) {
+        if (err) return console.error(err);
+        console.log(data);
+    });
+});
+```
+
+由於檔案輸出入會經由緩衝區(Buffer)，在讀取檔案時使用'utf-8'選項作為fs.readFile()函式的第二個參數。也可將緩衝區轉換成字串。
+
+第二種：開啟檔案並指派一個檔案描述(fd)。使用檔案描述來讀寫檔案。這種方式的好處是更能控制檔案如何開啟與操作。
+
+下列程式建構一個檔案、寫入、然後讀取。`fs.open()`函式的第二個參數是決定可以對檔案做的動作的旗標，此例中的'a+'開啟檔案供增添與讀取，若檔案不存在則建構檔案。第三個參數設定檔案的權限(允許讀寫)。
+
+```
+"use strict"
+
+var fs = require('fs');
+
+fs.open('./new.txt', 'a+', 0x766, function (err, fd) {
+    if (err) return console.error(err);
+    fs.write(fd, 'First line', 'utf-8', function (err, written, str) {
+        if (err) return console.error(err);
+        var buf = new Buffer(written);
+        fs.read(fd, buf, 0, written, 0, function(err, bytes, buffer) {
+            if (err) return console.error(err);
+            console.log(buffer.toString('utf-8'));
+        });
+    });
+});
+```
+
+檔案描述從callback回傳然後用於`fs.write()`函式。字串從位置0寫入檔案。根據Node文件，Linux檔案以增添模式開啟時一定會寫入檔案最後(忽略位置指示)。
+
+`fs.write()`的callback函式回傳錯誤(如果發生)、寫入的位元組數，與寫入的字串。最後，fs.read()用於讀取行到緩衝區中，然後輸出到控制台。
+
+除了檔案，你也可以操控目錄。
+
+### 存取與維護目錄
+
+你可建構目錄、刪除目錄、讀取目錄下的檔案。你也可以建構檔案的符號連結，或切斷連結來刪除它(只要沒程式開啟它)。如果要裁剪檔案(使其大小為零)，可使用`truncate()`，這樣會留下檔案但刪除內容。
+
+下列程式列出目前目錄的檔案，如果是壓縮檔它們會被切斷連結。此任務以“以Path存取資源”的Path模組簡化：
+
+```
+'use strict';
+
+var fs = require('fs');
+var path = require('path');
+
+fs.readdir('./', function(err, files) {
+    for (let file of files) {
+        console.log(file);
+        if (path.extname(file) == '.gz') {
+            fs.unlink('./' + file);
+        }
+    }
+});
+```
+
+### 檔案串流
+
+可使用`fs.createReadStream()`建構可讀串流，傳入路徑與options物件，或在選項中指定檔案描述並設定path為空。這也適用於`fs.createWriteStream()`建構的可寫串流。
+
+預設，可讀串流以下列選項建構：
+
+```
+{
+  flags: 'r',
+  encoding: null,
+  fd: null,
+  mode: 0o666,
+  autoClose: true
+}
+```
+
+如果想使用檔案描述，可在選項中設定。autoClose選項自動地在完成讀取後關閉檔案。如果想要讀取檔案的一段內容，可使用選項的start與end設定開始與結束(以位元組計)。你可指定'utf-8'或其他編碼，但也可以在之後使用`setEncoding()`設定。
+
+可寫串流的預設選項：
+
+```
+{
+  flags: 'w',
+  defaultEncoding: 'utf8',
+  fd: null,
+  mode: 0o666
+}
+```
+
+同樣，可使用檔案描述代替路徑。可寫串流的編碼以defaultEncoding而非encoding設定。如果想要寫入特定檔案位置，可設定start選項。不指定end選項是因為寫入結束就結束。
+
+範例：可寫串流開啟檔案供修改。修改的動作是插入字串到檔案指定位置。此例使用檔案描述，這表示應用程式呼叫fs.createWriteStream()時，它不會與建構可寫串流同時初始化檔案開啟。
+
+```
+var fs = require('fs');
+
+fs.open('./working.txt', 'r+', function(err, fd) {
+    if (err) return console.error(err);
+
+    var writable = fs.createWriteStream(null, {
+        fd: fd,
+        start: 10,
+        defaultEncoding: 'utf8'
+    });
+
+    writable.write(' inserting this text ');
+});
+```
+
+注意檔案以r+旗標開啟，這讓應用程式可讀可修改檔案。
+
+範例：開啟同個檔案，這次是讀取內容。使用預設的r旗標，因只是讀取檔案。但使用了setEncoding()將編碼改為utf-8：
+
+```
+var fs = require('fs');
+
+var readable =
+    fs.createReadStream('./working.txt').setEncoding('utf8');
+
+var data = '';
+readable.on('data', function(chunk) {
+    data += chunk;
+});
+
+readable.on('end', function() {
+    console.log(data);
+});
+```
+
+現在若開啟檔案供讀取並連接結果到可寫串流可節省時間。可使用`pipe()`函式。但不能中途修改結果，因為可寫串流：只可寫。它不是雙工串流或可修改內容的轉換串流。但你可以複製檔案的內容到另一邊檔案。
+
+```
+var fs = require('fs');
+
+var readable = fs.createReadStream('./working.txt');
+var writable = fs.createWriteStream('./working2.txt');
+
+readable.pipe(writable);
+```
+
+## 以 Path 存取資源
+
+Node的Path工具模組是一種從檔案系統路徑轉換與擷取資料的方式，它還提供處理檔案系統路徑的環境中立方式，因此無須分別編寫Linux與Windows模組。
+
+之前在遍歷目錄下的檔案以擷取副檔名看過擷取功能：
+
+```
+'use strict';
+
+var fs = require('fs');
+var path = require('path');
+
+fs.readdir('./', function(err, files) {
+    for (let file of files) {
+        console.log(file);
+        if (path.extname(file) == '.gz') {
+            fs.unlink('./' + file);
+        }
+    }
+});
+```
+
+想取得檔案名稱：
+
+```
+var fs = require('fs'),
+    path = require('path');
+
+fs.readdir('./', function (err, files) {
+    for (let file of files) {
+        let ext = path.extname(file);
+        let base = path.basename(file);
+        console.log(`file ${base} with extension of ${ext}`);
+    }
+});
+```
+
+`path.basename()`結果的第二個參數回傳沒有副檔名的檔案名稱。
+
+Path的環境中立的一個例子是`path.delimeter`屬性，它是系統的分隔字。在Linux是冒號(:)，在windows中則為分號(;)。如果想在應用程式中拆解PATH環境變數值供各種作業系統操作，可使用`Path.delimeter`：
+
+```
+var path = require('path');
+
+console.log(process.env.PATH);
+console.log(process.env.PATH.split(path.delimiter));
+```
+
+現在後者回傳的PATH變數陣列可用於各種環境。
+
+不同系統另一個差別是使用斜線(Linux)與反斜線(Windows)。使用`path.normalize()`讓應用程式的檔案路徑設置可在兩種中運行：
+
+```
+pathname = path.normalize(base + req.url);
+```
+
+Path模組的重點不在於它可執行我們使用String物件或RegExp也可以做到的字串轉換，而是它以**不可知論**(**作業系統中立**)的方式轉換檔案系統路徑。
+
+如果想要解析檔案系統路徑成個別元件，可使用`path.parse()`函式，結果視作業系統有所不同。
+
+```
+var path = require('path');
+
+console.log(path.parse(__filename));
+```
+
+結果：
+
+```
+{ root: '/',
+  dir: '/Users/eden90267/Desktop/node-learning-2nd/ch06',
+  base: 'test14.js',
+  ext: '.js',
+  name: 'test14' }
+```
+
+## 建構命令列工具
+
+在Unix環境，你可建構直接執行而無須使用node命令的Node應用程式。
+
+※ 建構Windows命令列工具，必須建構帶有呼叫Node與應用程式的批次檔。
+
+為示範，會使用Commander模組與存取ImageMagick這個圖形工具的**子行程**。
+
+此應用程式，使用ImageMagick將圖檔加上Polaroid效果，儲存到新的檔案中。如範例，使用Commander來處理命令列參數並提供使用此工具的輔助說明。
+
+```
+#!/usr/bin/env node
+
+var spawn = require('child_process').spawn;
+var program = require('commander');
+
+program
+    .version('0.0.1')
+    .option('-s, --source [file name]', 'Source graphic file name')
+    .option('-f, --file [file name]', 'Resulting file name')
+    .parse(process.argv);
+
+if ((program.source === undefined) || (program.file === undefined)) {
+    console.error('source and file must be provided');
+    process.exit();
+}
+
+var photo = program.source;
+var file = program.file;
+
+// 轉換陣列
+var opts = [
+    photo,
+    "-bordercolor", "snow",
+    "-border", "20",
+    "-background", "gray60",
+    "-background", "none",
+    "-rotate", 6,
+    "-background", "black",
+    "(", "+clone", "-shadow", "60x8+8+8", ")",
+    "+swap",
+    "-background", "none",
+    "-thumbnail", "240x240",
+    "-flatten",
+    file
+];
+
+var im = spawn('convert', opts);
+im.stderr.on('data', (data) => {
+    console.log(`stderr: ${data}`);
+});
+
+im.on('close', (code) => {
+    console.log(`child process exited with code ${code}`);
+});
+```
+
+為將它轉換成命令列工具，檔案頂端加上這個：
+
+```
+#!/usr/bin/env node
+```
+
+"#!"字元稱為shebang，其後應該是用於執行檔案的應用程式，此例中為Node。子目錄是應用程式所在的路徑。
+
+檔案沒加上.js副檔名，以chmod轉換成可執行檔：
+
+```
+chmod a+x polaroid
+```
+
+現在能以下列命令執行此工具：
+
+```
+./polaroid -h
+
+  Usage: polaroid [options]
+
+  Options:
+
+    -h, --help                output usage information
+    -V, --version             output the version number
+    -s, --source [file name]  Source graphic file name
+    -f, --file [file name]    Resulting file name
+```
+
+取得工具的補助說明
+
+```
+./polaroid -s phoenix5a.png -f phoenix5apolaroid.png
+```
+
+以建構Polaroid效果的新圖檔。此工具在可執行的地方執行得很好。(Windows、Mac失敗...)。
