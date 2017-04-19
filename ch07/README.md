@@ -329,3 +329,139 @@ https.createServer(options, function(req, res) {
 公鑰與憑證是公開且其內容可同步讀取。
 
 執行此應用程式，會需要root權限(443綁定埠，綁定小於1024需要root權限)，可用其他埠執行，例如3000。
+
+### Crypto模組
+
+Node提供Crypto模組供加密，它是OpenSSL功能的介面。這包括OpenSSL的雜湊、HMAC、加密、解密、簽署、與驗證功能。Node的這些元件功能相當容易使用，但它們假設Node開發者知道OpenSSL與各種功能的用途。
+
+這邊會討論Crypto模組建構使用OpenSSL的`hash`函式的密碼雜湊功能。同一種功能可用於建構`checksum`來確保所儲存與傳輸的資料不會在過程中損毀。
+
+可使用Crypto模組的`createHash`方法建構儲存於資料庫的密碼雜湊。下面範例使用sha1演算法建構雜湊，使用此雜湊將密碼編碼，然後擷取資料的摘要儲存於資料庫。
+
+```
+var crypto = require('crypto');
+
+var password = '1234';
+var hashpassword = crypto.createHash('sha1').update(password).digest('hex');
+
+console.log(hashpassword);
+```
+
+摘要編碼設定為十六進位。預設編碼為二進位，也可以使用base64。
+
+許多應用程式為此使用雜湊，但在資料庫中明文儲存雜湊密碼有個稱為rainbow table的問題。
+
+rainbow table列出所有可能的字元組合的雜湊值，讓你的密碼更容易破解。
+
+解決辦法是加上**salt**，於加密前附加於密碼之後的獨特值。可以是用於所有密碼的單一值，安全的儲存在伺服器上。更好做法是每個密碼產生獨特的值並與密碼一起儲存。雖還是有可能salt跟密碼一起被盜，但增加了破解困難度。
+
+以下範例：從命令列參數取用使用者名稱與密碼產生密碼雜湊然後儲存新使用者到MySQL資料庫表格中的應用程式。
+
+```
+npm install node-mysql
+```
+
+以下SQL建構表格
+
+```
+CREATE TABLE user (userid INT NOT NULL AUTO_INCREMENT, PRIMARY KEY(userid),
+username VARCHAR(400) NOT NULL, passwordhash VARCHAR(400) NOT NULL, salt DOUBLE NOT NULL);
+```
+
+salt值由日期值乘上隨機值並取整數產生，在產生密碼的雜湊前加在密碼的後面，然後將使用者資料新增至MySQL使用者表格中：
+
+```
+var mysql = require('mysql'),
+    crypto = require('crypto');
+
+var connection = mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: '1234'
+});
+
+connection.connect();
+
+connection.query('USE nodedatabase');
+
+var username = process.argv[2];
+var password = process.argv[3];
+var salt = Math.random((Date.now() * Math.random())) + '';
+
+var hashpassword = crypto.createHash('sha512')
+    .update(salt + password, 'utf8')
+    .digest('hex');
+
+// 建立使用者紀錄
+connection.query('INSERT INTO user ' +
+    'SET username = ?, passwordhash = ?, salt = ?',
+    [username, hashpassword, salt], function (err, result) {
+        if (err) console.error(err);
+        connection.end();
+    });
+```
+
+以下測試使用者名稱與密碼的應用程式：
+
+```
+var mysql = require('mysql'),
+    crypto = require('crypto');
+
+var connection = mysql.createConnection({
+    user: 'root',
+    password: '1234'
+});
+
+connection.query('USE nodedatabase');
+
+var username = process.argv[2];
+var password = process.argv[3];
+
+connection.query('SELECT passwordhash, salt FROM user WHERE username = ?',
+    [username], function (err, result, fields) {
+        if (err) return console.error(err);
+
+        var newhash = crypto.createHash('sha512')
+            .update(result[0].salt + password, 'utf8')
+            .digest('hex');
+        
+        if (result[0].passwordhash === newhash) {
+            console.log(`OK, you're cool`);
+        } else {
+            console.log(`Your password is wrong, Try again.`);
+        }
+        connection.end();
+    });
+```
+
+測試應用程式：
+
+```
+$ node password Michael apple*frk13*
+
+$ node check Michael apple*frk13*
+OK, you're cool
+
+$ node check Michael badstuff
+Your password is wrong, Try again.
+```
+
+crypto雜湊也可用於串流。以checksum為例，它是一種以演算法判斷資料傳輸是否成功的方式。你可建構檔案的雜湊，傳輸檔案時一併傳遞此值。下載檔案的一方可使用雜湊值檢查傳輸的正確性。下面程式碼使用`pipe()`函式與Crypto函式的雙工本質建構這樣的雜湊：
+
+```
+var crypto = require('crypto');
+var fs = require('fs');
+var hash = crypto.createHash('sha256');
+hash.setEncoding('hex');
+
+var input = fs.createReadStream('main.txt');
+var output = fs.createWriteStream('mainhash.txt');
+
+input.pipe(hash).pipe(output);
+```
+
+也可使用md5作為演算法產生MD5的checksum，它在各種環境與應用程式很常見，因為較快，但較不安全。
+
+```
+var hash = crypto.createHash('md5');
+```
