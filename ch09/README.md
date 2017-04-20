@@ -178,3 +178,181 @@ obj.doLater(); // shelley
 ```
 
 ※ 箭頭函式有些問題，像是如何回傳空物件或參數的存取。
+
+## 類別
+
+```
+var util = require('util');
+var eventEmitter = require('events').EventEmitter;
+var fs = require('fs');
+
+exports.InputChecker = InputChecker;
+
+function InputChecker(name, file) {
+    this.name = name;
+    this.writeStream = fs.createWriteStream(`./${file}.txt`, {
+        'flags': 'a',
+        'encoding': 'utf8',
+        'mode': 0666
+    });
+};
+
+util.inherits(InputChecker, eventEmitter);
+InputChecker.prototype.check = function check(input) {
+    var command = input.toString().trim().substr(0, 3);
+    if (command == 'wr:') {
+        this.emit('write', input.substr(3, input.length));
+    } else if (command == 'en:') {
+        this.emit('end');
+    } else {
+        this.emit('echo', input);
+    }
+}
+```
+
+```
+'use strict';
+
+const util = require('util');
+const eventEmitter = require('events').EventEmitter;
+const fs = require('fs');
+
+class InputChecker extends eventEmitter {
+
+    constructor(name, file) {
+        super(); // 呼叫父類別以叫用父類別的函式
+        this.name = name;
+        this.writeStream = fs.createWriteStream(`./${file}.txt`, {
+            'flags': 'a',
+            'encoding': 'utf8',
+            'mode': 0o666
+        });
+    }
+
+    check(input) {
+        let command = input.toString().trim().substr(0, 3);
+        if (command == 'wr:') {
+            this.emit('write', input.substr(3, input.length));
+        } else if (command == 'en:') {
+            this.emit('end');
+        } else {
+            this.emit('echo', input);
+        }
+    }
+
+}
+
+exports.InputChecker = InputChecker;
+```
+
+使用**新類別化**模組的應用程式維持不變：
+
+```
+var InputChecker = require('./class').InputChecker;
+
+// 測試新物件與事件處理程序
+var ic = new InputChecker('Shelley', 'output');
+
+ic.on('write', function (data) {
+    this.writeStream.write(data, 'utf8');
+});
+ic.addListener('echo', function (data) {
+    console.log(`${this.name} wrote ${data}`);
+});
+
+ic.on('end', () => process.exit());
+
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', function (input) {
+    ic.check(input);
+});
+```
+
+## promise與Bluebird
+
+Node早期開發階段，callback或promise有過爭論，結果callback贏了。
+
+promise現在是ES6一部分，你可在你的Node應用程式使用它們。但若要對Node核心功能使用promise，需自行實作或使用提供支援的模組。
+
+這一節檢視一個非常受歡迎的promise模組：Bluebird。
+
+※ 另一個使用Bluebird的理由是效能。
+
+相較於套疊的callback，ES6的promise功能使用分支，成功由一個分支處理，失敗由另一分支處理。最佳示範是將Node檔案系統應用程式promise化一改callback結構為promise。
+
+```
+var fs = require('fs');
+fs.readFile('./apples.txt', 'utf8', function(err, data) {
+    if (err) {
+        console.error(err.stack);
+    } else {
+        var adjData = data.replace(/apple/g, 'orange');
+
+        fs.writeFile('./oranges.txt', adjData, function(err) {
+            if (err) console.error(err);
+        });
+    }
+});
+```
+
+現在使用Bluebird將此範例bromise化。
+
+Bluebird的`promisifyAll()`函式用於promise化所有的File System函式。相較於`readFile()`，我們使用`readFileAsync()`，它是該函式的promise版本。
+
+```
+var promise = require('bluebird');
+var fs = promise.promisifyAll(require('fs'));
+
+fs.readFileAsync('./apples.txt', 'utf8')
+    .then(function (data) {
+        var adjData = data.replace(/apple/g, 'orange');
+        return fs.writeFileAsync('./oranges.txt', adjData);
+    })
+    .catch(function (error) {
+        console.error(error);
+    });
+```
+
+可看出promise版本的程式比較清楚。特別是任何數量的呼叫只需要一個錯誤處理程序。
+
+更複雜的範例：
+
+```
+var promise = require('bluebird');
+var fs = promise.promisifyAll(require('fs'));
+
+fs.readFileAsync('./apples.txt', 'utf8')
+  .then(function(data) {
+      var adjData = data.replace(/apple/g, 'orange');
+      return fs.mkdirAsync('./fruit/');
+  })
+  .then(function(adjData) {
+      return fs.writeFileAsync('./fruit/oranges.txt', adjData); // undefined
+  })
+  .catch(function(error) {
+      console.error(error);
+  });
+```
+
+處理回傳陣列的實例，例如使用File System的readdir()函式來取得目錄內容?
+
+這要靠`map()`等陣列處理函式。
+
+```
+var promise = require('bluebird');
+var fs = promise.promisifyAll(require('fs'));
+
+fs.readdirAsync('./apples/').map(filename => {
+    fs.readFileAsync('./apples/' + filename, 'utf8')
+        .then(function(data) {
+            var adjData = data.replace(/apple/g, 'orange');
+            return fs.writeFileAsync('./oranges/' + filename, adjData);
+        })
+        .catch(function(error) {
+            console.error(error);
+        })
+})
+.catch(function(error) {
+    console.error(error);
+});
+```
