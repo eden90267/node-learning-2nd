@@ -188,3 +188,134 @@ module.exports = router;
 資料(區域變數)與view在res.render()函式呼叫中相遇。view用於index.jade檔案，可看到樣板中title屬性的值作為資料傳入函式。
 
 app.js檔案其餘部分是錯誤處理。
+
+## MongoDB 與 Redis 資料庫系統
+
+### MongoDB
+
+Node應用程式最常見的資料庫。MongoDB是個以文件為基礎的資料庫。文件被編寫成BSON，一種二進位形式的JSON。相較於資料表的列，你使用BSON文件；相較於資料表，你使用集合。
+
+MongoDB並非唯一一個以文件為中心的資料庫，Node對大部分文件資料庫有各種程度的資源，但MongoDB與CouchDB的支援最好。
+
+Node透過MongoDB Native NodeJS Driver與Mongoose的物件導向支援對MongoDB的支援非常好。
+
+雖然底層資料結構與關連式資料庫不同，但基本概念還是一樣：建構資料庫、建構紀錄集合、加入個別紀錄。
+
+以下MongoDB範例：
+
+```
+var MongoClient = require('mongodb').MongoClient;
+
+// 連結資料庫
+MongoClient.connect("mongodb://localhost:27017/exampleDb", function (err, db) {
+    if (err) return console.error(err);
+
+    // 存取widgets集合
+    db.collection('widgets', function (err, collection) {
+        if (err) return console.error(err);
+
+        // 刪除所有文件
+        collection.remove(null, { safe: true }, function (err, result) {
+            if (err) return console.error(err);
+            console.log(`result of remove ${result.result}`);
+        });
+
+        //建構兩筆紀錄
+        var widget1 = {
+            title: 'First Great widget',
+            desc: 'greatest widget of all',
+            price: 14.99
+        };
+        var widget2 = {
+            title: 'Second Great widget',
+            desc: 'second greatest widget of all',
+            price: 29.99
+        };
+        collection.insertOne(widget1, { w: 1 }, function (err, result) {
+            if (err) return console.error(err);
+            console.log(result.insertedId);
+
+            collection.insertOne(widget2, { w: 1 }, function (err, result) {
+                if (err) return console.error(err);
+                console.log(result.insertedId);
+
+                collection.find({}).toArray(function (err, docs) {
+                    console.log(`found documents`);
+                    console.dir(docs);
+
+                    // 關閉資料庫
+                    db.close();
+                });
+            });
+        });
+    });
+});
+```
+
+可改用promise。
+
+`{w:1}`選項指定MongoDB寫入操作的write concern。
+
+`collection.find()`此函式會建構一個cursor，而`toArray()`函式會將cursor以陣列回傳，然後使用console.dir()輸出。
+
+物件的辨識名稱實際上是個BSON物件，因此無法清楚輸出。如果想更清楚輸出，可將每個欄位的BSON辨識名稱以`toHexString()`轉換成十六進位字串。
+
+```
+docs.forEach(function(doc) {
+    console.log(`ID: ${doc._id.toHexString()}`);
+    console.log(`desc: ${doc.desc}`);
+    console.log(`title: ${doc.title}`);
+    console.log(`price: ${doc.price}`);
+});
+```
+
+你可使用命令列工具檢視MongoDB的紀錄。使用下列命令啟動工具並檢視紀錄：
+
+1. 輸入`mongo`啟動命令列工具
+2. 輸入`use exampleDb`以使用exampleDb資料庫
+3. 輸入`show collections`以檢視所有集合
+4. 輸入`db.widgets.find()`以檢視Widget紀錄
+
+如果你偏好在應用程式中使用物件導向方式操作MongoDB，你需要使用Mongoose。它與Express更為合適。
+
+[Node文件中的MongoDB](https://mongodb.github.io/node-mongodb-native/api-articles/nodekoarticle1.html)
+
+### Redis 鍵/值儲存體
+
+談到資料，有關聯式資料庫與NoSQL兩種。在NoSQL類型中，有一種資料結構是根據鍵/值對建構，通常儲存在記憶體中以供快速存取。最常見三種記憶體鍵/值對儲存體是Memcached、Cassandra，與Redis。Node三種都有資源。
+
+Memcached主要用於記憶體快取資料快速存取。它在分散式運算中相當好，但對更複雜的資料結構支援有限。它對大量查詢但較少資料讀寫的應用程式很有用。
+
+Redis是對後面這種應用程式比較好的資料儲存體。此外，Redis可以永久儲存，且比Memcached更有彈性一特別是它支援不同類型資料，但Redis只能在單一機器上運行。
+
+Redis與Cassandra的比較也是有相同的因素。如同Memcached，Cassandra支援叢集，但也如同Memcached，它的資料結構也有限制。它適合任意查詢一這方面Redis比較差。但Redis容易使用、不複雜、通常比Cassandra快。為了這些原因，Redis在Node開發者間越來越常見。
+
+Node的Redis模組安裝：
+
+```
+npm install redis
+```
+
+如果你計畫在Redis上進行大量操作，建議安裝Node的hiredis模組，它非阻斷且可提升效能：
+
+```
+npm install hiredis redis
+```
+
+Redis模組是Redis本身的簡單包裝，因此你需花時間學習Redis命令與Redis資料儲存體的運作方式。
+
+使用createClient建構Redis用戶端。
+
+```
+var redis = require('redis');
+var client = redis.createClient();
+```
+
+createClient方法有三個選擇性參數：port、host，與選項。default：host是127.0.0.1，而port是6379，它是Redis伺服器的預設值。
+
+第三個參數是個支援多個選項的物件，詳細說明見模組文件。
+
+用戶端連接Redis資料儲存體後，你可以發送命令給伺服器直到呼叫`client.quit()`為止，它會關閉與Redis伺服器的連線。強制關閉可使用`client.end()`，後者不會等待解析回應。但如果當掉或想重新開始，`client.end()`是好方法。
+
+透過用戶端連線發出Redis命令是相當直覺的程序。所有命令從用戶端物件顯露，而命令參數以參數傳入。Node最後一個參數是callback函式，它回傳錯誤或Redis命令回應的資料。
+
