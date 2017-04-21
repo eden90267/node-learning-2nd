@@ -319,3 +319,202 @@ createClient方法有三個選擇性參數：port、host，與選項。default�
 
 透過用戶端連線發出Redis命令是相當直覺的程序。所有命令從用戶端物件顯露，而命令參數以參數傳入。Node最後一個參數是callback函式，它回傳錯誤或Redis命令回應的資料。
 
+下列程式中，`client.hset()`方法用於設定**雜湊**屬性。在Redis中，雜湊是字串欄位與值間的對應，例如“lastname”代表姓，“firstname”代表名：
+
+```
+client.hset("hashid", "propname", "propvalue", function(err, reply) {
+    // 執行錯誤或回應工作
+});
+```
+
+hset命令設定值，因此不會回傳資料一只有redis的回應。如果呼叫回應多個值的方法，例如`client.hvals`，callback函式的第二個參數會是一個陣列一單一字串的陣列或物件陣列：
+
+```
+client.hvals(obj.member, function(err, replies) {
+    if (err) {
+        return console.error("error response - " + err);
+    }
+    
+    console.log(replies.length + " replies:");
+    replies.forEach(function(reply, i) {
+        console.log(" " + i + ": " + reply);
+    });
+});
+```
+
+由於Node的callback經常出現且很多Redis命令只是回應成功的操作，Redis模組提供了redis.print方法可作為最後一個參數：
+
+```
+client.set("somekey", "somevalue", redis.print);
+```
+
+`redis.print`方法輸出錯誤或回應到控制台並返回。
+
+為示範Node上的Redis，這裡建構一個**訊息佇列**。訊息佇列是將某種通訊作為輸入，然後儲存到佇列中(最後面)。訊息被保存直到被訊息接收方取出，此時會從佇列取出(最前面)並發送給接收方(一次一則或一批)。此通訊為非同步，因為儲存訊息的應用程式不需要連接接收方，接收方也不需要連接儲存訊息的應用程式。
+
+Redis是這種運用的理想儲存體。
+
+範例：處理網頁紀錄並將圖檔資源請求發送至訊息佇列的Node應用程式
+
+```
+var spawn = require('child_process').spawn;
+var net = require('net');
+
+var client = new net.Socket();
+client.setEncoding('utf8');
+
+// 連接TCP伺服器
+client.connect('3000', 'examples.burningbird.net', function () {
+    console.log(`connected to server`);
+});
+
+// 啟動子行程
+var logs = spawn('tail', ['-f',
+    '/home/main/logs/access.log',
+    '/home/tech/logs/access.log',
+    '/home/shelleypowers/logs/access.log',
+    '/home/green/logs/access.log',
+    '/home/puppies/logs/access.log']);
+
+// 處理子行程資料
+logs.stdout.setEncoding('utf8');
+logs.stdout.on('data', function (data) {
+
+    // 資源URL
+    var re = /GET\s(\S+)\sHTTP/g;
+
+    // 檢測圖檔
+    var re2 = /\.gif|\.png|\.jpg|.svg/;
+
+    // 擷取URL
+    var parts = re.exec(data);
+    console.log(parts[1]);
+
+    // 若找到圖檔則儲存
+    var tst = re2.test(parts[1]);
+    if (tst) {
+        client.write(parts[1]);
+    }
+});
+
+logs.stderr.on('data', function (data) {
+    console.log(`stderr: ${data}`);
+});
+
+logs.on('exit', function (code) {
+    console.log('child process exited with code ' + code);
+    client.end();
+})
+```
+
+下列是此應用程式典型的控制台紀錄：
+
+```
+/robots.txt
+/weblog
+/writings/fiction?page=10
+/images/kite.jpg
+/node/145
+/culture/book-reviews/silkworm
+/feed/atom/
+/images/visitmologo.jpg
+/images/canvas.png
+/sites/default/files/paws.png
+/feeds/atom.xml
+```
+
+範例：將訊息加入Redis清單的訊息佇列(TCP Server並傾聽訊息)
+
+```
+var net = require('net');
+var redis = require('redis');
+
+var server = net.createServer(function (conn) {
+    console.log(`connected`);
+
+    // 建構Redis用戶端
+    var client = redis.createClient();
+
+    client.on('error', function (err) {
+        console.log(`Error ${err}`);
+    });
+
+    // 第六個資料庫是圖檔佇列
+    client.select(6);
+    // 傾聽資料
+    conn.on('data', function (data) {
+        console.log(`${data} from ${conn.remoteAddress} ${conn.remotePort}`);
+
+        // 儲存資料
+        client.rpush('images', data);
+    });
+}).listen(3000);
+
+server.on('close', function(err) {
+    client.quit();
+});
+
+console.log(`listening on port 3000`);
+```
+
+訊息佇列應用程式的控制台紀錄類似這樣：
+
+```
+listening on port 3000
+connected
+/images/venus.png from 173.255.206.103 39519
+/images/kite.jpg from 173.255.206.103 39519
+/images/visitmologo.jpg from 173.255.206.103 39519
+/images/canvas.png from 173.255.206.103 39519
+/sites/default/files/paws.png 173.255.206.103 39519
+```
+
+範例：從Redis清單取出訊息並回傳給使用者的HTTP伺服器
+
+```
+var redis = require('redis'),
+    http = require('http');
+
+var messageServer = http.createServer();
+
+// 傾聽請求
+messageServer.on('request', function (req, res) {
+
+    // 濾掉icon請求
+    if (req.url === '/favicon.ico') {
+        res.writeHead(200, { 'Content-Type': 'image/x-icon' });
+        res.end();
+        return;
+    }
+
+    // 建構Redis用戶端
+    var client = redis.createClient();
+
+    client.on('error', function (err) {
+        console.log(`Error ${err}`);
+    });
+
+    // 設定圖檔佇列資料庫
+    client.select(6);
+    client.lpop('images', function (err, reply) {
+        if (err) {
+            return console.error(`error response ${err}`);
+        }
+
+        // 如果有資料
+        if (reply) {
+            res.write(reply + '\n');
+        } else {
+            res.write('End of queue\n');
+        }
+        res.end();
+    });
+    client.quit();
+});
+
+messageServer.listen(8124);
+
+console.log(`listening on 8124`);
+```
+
+※ 建構固定的Redis連線，或建構連線並立即釋放：前者速度較快，但會遇到并行使用的瓶頸(進行中途大幅變慢一段期間，然後恢復原來速度)；而後者不會，但額外成本讓應用程式變慢。
