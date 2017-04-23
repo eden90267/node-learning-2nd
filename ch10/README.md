@@ -518,3 +518,34 @@ console.log(`listening on 8124`);
 ```
 
 ※ 建構固定的Redis連線，或建構連線並立即釋放：前者速度較快，但會遇到并行使用的瓶頸(進行中途大幅變慢一段期間，然後恢復原來速度)；而後者不會，但額外成本讓應用程式變慢。
+
+## AngularJS與其他全端架構
+
+這章提及的架構：AngularJS、Ember，與Backbone等全端架構。
+
+為認識全端架構，需認識[TodoMVC](http://todomvc.com/)這個網站。此網站定義待辦清單應用程式的需求，然後邀請所有架構的開發者提交應用程式的實作。
+
+- [AngularJS版](https://github.com/tastejs/todomvc/tree/gh-pages/examples/angularjs)
+- [Backbone.js版](https://github.com/tastejs/todomvc/tree/gh-pages/examples/backbone)
+
+AngularJS以導數註記，Backbone.js大量使用Userscore樣板。
+
+Backbone.js比AngularJS難以理解。
+
+AngularJS異動時重建DOM，Backbone.js則原地修改。AngularJS提供雙向綁定，表示UI與model異動會自動同步。
+
+Backbone.js架構是MVP，AngularJS則是MVC。這表示Backbone.js不提供相同的資料綁定，你必須自行處理。
+
+Backbone.js較輕量化，比AngularJS更快，但AngularJS較容易新手消化。
+
+這兩個架構與其他全端架構用於動態建構網頁，這些架構稱為**單頁應用程式**。相較於在伺服器產生HTML並發送給瀏覽器，它們將資料打包，發送給瀏覽器，然後使用JavaScript顯示網頁。
+
+這種功能的好處是網頁在你修改資料的view或深入網頁細節不一定要重整網頁。
+
+Gmail就是一個SPA的例子。
+
+一個好的架構需要提供什麼？要提供的功能之一是顯示與資料之間的綁定。這表示如果資料異動，使用者介面也會更新。它還應該支援樣板引擎(e.g. Express的Jade)。它還需要降低重複程式碼的方式，因此架構必須提供可重複使用元件或模組的支援。
+
+在Express應用程式中，我們看到URL導向與函式間的連結。URL成為存取一群資料或單一項目的方式。架構必須提供這種導向的支援。
+
+架構還必須支援MV*架構，這表示至少要分離顯示邏輯與商業邏輯。它可以是MVC、MVP、MVVM等，但至少要分離資料與使用者介面。
