@@ -280,10 +280,421 @@ assert.equal(false, util.isArray([]), 'Test 1Ab failed');
 下列的Assert模組方法取用相同的三個參數，但測試值與表示式關係不同：
 
 - assert.equal
+
+    若表示式結果與提供值不等則失敗
+
 - assert.strictEqual
+
+    若表示式結果與提供值嚴格不等則失敗
+
 - assert.notEqual
+
+    若表示式結果與提供值相等則失敗
+
 - assert.notStrictEqual
+
+    若表示式結果與提供值嚴格相等則失敗
+
 - assert.deepEqual
+
+    若表示式結果與提供值不等則失敗
+
 - assert.notDeepEqual
+
+    若表示式結果與提供值相等則失敗
+
 - assert.deepStrictEqual
+
+    類似assert.deepEqual()，但原始型別嚴格相等(===)比較
+
 - assert.notDeepStrictEqual
+
+    測試深嚴格不等性
+
+深方法用於複合組件，例如陣列或物件。下面的assert.deepEqual會成功：
+
+```
+assert.deepEqual([1,2,3],[1,2,3]);
+```
+
+但若是assert.equal則不成功。
+
+其餘的assert方法取用不同的參數。呼叫assert方法並傳入值與訊息等同呼叫assert.isEqual並傳入true作為第一個參數、表達式，與訊息。
+
+```
+var val = 3;
+assert(val == 3, 'Test 1 Not Equal');
+```
+
+等同
+
+```
+assert.equal(true, val == 3, 'Test 1 Not Equal');
+```
+
+或使用assert.ok這個別名：
+
+```
+assert.ok(val == 3, 'Test 1 Not Equal');
+```
+
+assert.fail方法會拋出例外。它取用四個參數：值、表示式、訊息，與用於分隔拋出例外時在訊息中的值與表示式的運算子：
+
+```
+var assert = require('assert');
+
+try {
+    var val = 3;
+    assert.fail(val, 3, 'Fails Not Equal', '==');
+} catch (e) {
+    console.log(e);
+}
+```
+
+控制台訊息：
+
+```
+{ AssertionError: Fails Not Equal
+    at Object.<anonymous> (C:\Users\eden_liu\node-learning-2nd\ch11\test2.js:5:12)
+    at Module._compile (module.js:571:32)
+    at Object.Module._extensions..js (module.js:580:10)
+    at Module.load (module.js:488:32)
+    at tryModuleLoad (module.js:447:12)
+    at Function.Module._load (module.js:439:3)
+    at Module.runMain (module.js:605:10)
+    at run (bootstrap_node.js:425:7)
+    at startup (bootstrap_node.js:146:9)
+    at bootstrap_node.js:540:3
+  name: 'AssertionError',
+  actual: 3,
+  expected: 3,
+  operator: '==',
+  message: 'Fails Not Equal',
+  generatedMessage: false }
+```
+
+assert.ifError函式取用一個值並在值解析為false以外的任何東西時拋出例外。它是以錯誤物件作為第一個參數的callback函式的好測試：
+
+```
+assert.ifError(err); // 只有在true值時拋出
+```
+
+最後兩個assert方法是assert.throws與assert.doesNotThrow。第一個方法預期會拋出一個例外；第二個方法不會。兩個方法都取用一段程式作為第一個必要的參數，以及選擇性的錯誤與訊息作為第二、第三的參數。錯誤物件可以是建構元、正規表示式、或驗證函式。在下面程式中，輸出錯誤是因為作為第二個參數的錯誤正規表示式與錯誤訊息不符：
+
+```
+var assert = require('assert');
+
+assert.throws(
+    function() {
+        throw new Error('Wrong value');
+    },
+    /something/
+);
+```
+
+你可使用Assert模組建構單元測試。但此模組一個主要限制是你必須對測試做很多包裝以讓測試腳本不會因為一個測試失敗而整個失敗。此時要用Nodeunit等高階單元測試架構。
+
+### 以Nodeunit進行單元測試
+
+Nodeunit提供多測試的腳本進行的方式。寫好腳本後，測試是逐個進行，結果以排列過的方式回報。要使用Nodeunit，你需要以npm全域安裝：
+
+```
+npm install nodeunit -g
+```
+
+Nodeunit提供簡單的方式來執行一系列測試而不用將所有東西包裝在try/catch區塊中。它支援所有Assert模組測試並提供幾個方法來控制測試。
+
+測試以測試案例組織，每個案例以測試腳本中的物件方法匯出。每個測試案例有一個控制物件，通常稱為test。測試案例中第一個方法呼叫是test元素的expect方法，用以告訴Nodeunit測試案例中有多少個測試。測試案例中最後方法呼叫是test元素的done，用以告訴Nodeunit測試案例結束。介於中間的所有東西組成實際的測試單元。
+
+```
+module.exports = {
+    'Test 1': function(test) {
+        test.expect(3); // 三個測試
+        ... // 測試
+        test.done();
+    },
+    'Test 2': function(test) {
+        test.expect(1); // 只有一個測試
+        ... // 測試
+        test.done();
+    }
+};
+```
+
+要執行測試，輸入nodeunit與測試腳本名稱：
+
+```
+nodeunit thetest.js
+```
+
+範例：
+
+```
+var util = require('util');
+
+module.exports = {
+    'Test 1': function(test) {
+        test.expect(4);
+        test.equal(true, util.isArray([]));
+        test.equal(true, util.isArray(new Array(3)));
+        test.equal(true, util.isArray([1, 2, 3]));
+        test.notEqual(true, 1 > 2);
+        test.done();
+    },
+    'Test 2': function(test) {
+        test.expect(2);
+        test.deepEqual([1,2,3], [1,2,3]);
+        test.ok('str' === 'str', 'equal');
+        test.done();
+    }
+}
+```
+
+結果：
+
+```
+$ nodeunit thetest.js
+
+thetest.js
+√ Test 1
+√ Test 2
+
+OK: 6 assertions (14ms)
+```
+
+### 其他測試架構
+
+除了Nodeunit之外，Node開發者還有其他測試架構選項。某些工具使用起來比較簡單，各有好壞。接下來簡短討論三個架構：Mocha、Jasmine與Vows。
+
+#### Mocha
+
+```
+npm install mocha -g
+```
+
+Mocha被認為是Esoresso這個測試框架的後繼者。
+
+Mocha可在瀏覽器與Node應用程式中使用。它可經done函式進行非同步測試，而此函式可在同步測試時抑制。Mocha可用於任何斷言函式庫：
+
+```
+var assert = require('assert');
+describe('MyTest', function () {
+    describe('First', function () {
+        it('sample test', function () {
+            assert.equal('hello', 'hello');
+        });
+    });
+});
+```
+
+執行測試：
+
+```
+$ mocha testcase.js
+
+
+  MyTest
+    First
+      √ sample test
+
+
+  1 passing (8ms)
+```
+
+#### Vows
+
+Vows是行為驅動開發(behavior-driven development，BDD)測試架構，相比其他架構有一個優勢：更好的文件。測試是由測試套件組成，套件是由循序執行的測試組成的批次。**批次**由一或多個平行執行的背景組成，而每個背景組成一個**主題**。程式中的測試稱為vow。Vows自豪能夠清楚分離受測部分(主題)與測試(vow)。
+
+```
+npm install vows
+```
+
+示範：
+
+```
+const PI = Math.PI;
+
+exports.area = function (r) {
+    return (PI * r * r).toFixed(4);
+};
+
+exports.circumference = function (r) {
+    return (2 * PI * r).toFixed(4);
+};
+```
+
+在此Vows測試應用程式中，圓物件是**主題**，面積與圓周方法是row。兩者都包裝在Vows**背景**中。套件是整個測試應用程式，而**批次**是測試實例(圓與兩個方法)。
+
+範例：具一個批次、一個背景、一個主題，與兩個vow的Vows測試應用程式：
+
+```
+var vows = require('vows'),
+    assert = require('assert');
+
+var circle = require('./circle');
+var suite = vows.describe('Test Circle');
+
+suite.addBatch({
+    'An instance of Circle': {
+        topic: circle,
+        'should be able to calculate circumference': function(topic) {
+            assert.equal(topic.circumference(3.0), 18.8496);
+        },
+        'should be able to calculate area': function(topic) {
+            assert.equal(topic.area(3.0), 28.2743);
+        }
+    }
+}).run();
+```
+
+執行結果：
+
+```
+$ node vowstest.js
+·· ✓ OK » 2 honored (0.021s)
+```
+
+主題一定是非同步函式或值。相較於使用circle作為主題，可直接參考物件方法作為主題一加上一點來自函式閉包的幫忙。
+
+```
+var vows = require('vows'),
+    assert = require('assert');
+
+var circle = require('./circle');
+
+var suite = vows.describe('Test Circle');
+
+suite.addBatch({
+    'Testing Circle Circumference': {
+        topic: function() {
+            return circle.circumference;
+        },
+        'should be able to calculate circumference': function(topic) {
+            assert.equal(topic(3.0), 18.8496);
+        }
+    },
+    'Testing Circle Area': {
+        topic: function() {
+            return circle.area;
+        },
+        'should be able to calculate area': function(topic) {
+            assert.equal(topic(3.0), 28.2743);
+        }
+    }
+}).run();
+```
+
+這個版本的範例，每個背景是標題指定的物件：Testing Circle Circumference與Testing Circle Area。在每個背景中有一個主題與一個vow。
+
+可使用多個批次，每個批次可有多個背景，每個背景可有多個主題與vow。
+
+## 保持Node繼續執行
+
+僅管盡可能將應用程式寫好，完整的測試應用程式並加上錯誤處理以優雅的管理錯誤。但還是會出問題一不在預期中的問題使得應用程式掛掉。如果發生這樣的事，你必須有方式確保你的應用程式能夠於你不在場的情況下重新啟動。
+
+Forever是這樣的工具一它確保你的應用程式掛掉會重啟。它也是讓你的應用程式作為daemon在目前的終端機結束後繼續執行的方式。Forever可從命令列使用或作為應用程式的一部分。如果要從命令列啟動，你會需要全域安裝：
+
+```
+npm install forever -g
+```
+
+相較於直接以Node啟動應用程式，以Forever啟動它：
+
+```
+forever start -a -l forever.log -o out.log -e err.log finalserver.js
+```
+
+兩個選項與預設值是：minUpTime(default 1000ms)與spinSleepTime(default 1000ms)
+
+前面命令啟動finalserver.js這個腳本指定Forever紀錄、輸出紀錄，與錯誤紀錄的名稱。它還指示應用程式若記錄檔已經存在則繼續加入紀錄資料。
+
+如果發生事情讓腳本當掉，Forever會重啟它。Forever還可以確保Node應用程式在你關掉啟動應用程式的終端機視窗繼續執行。
+
+Forever具選項與動作。上面顯示的start值是一個動作的例子。可用的動作有：
+
+- start
+
+    啟動腳本
+
+- stop
+
+    停止腳本
+
+- stopall
+
+    停止所有腳本
+
+- restart
+
+    重新啟動腳本
+
+- restartall
+
+    重新啟動所有執行中的Forever腳本
+
+- cleanlogs
+
+    刪除所有紀錄
+
+- logs
+
+    列出所有Forever行程的紀錄
+
+- list
+
+    列出所有執行中的腳本
+
+- config
+
+    列出使用者組態
+
+- set <key> <val>
+
+    設定組態鍵值
+
+- clear <key>
+
+    清除組態鍵值
+
+- log <script|index>
+
+    列出<script|index>紀錄
+
+- columns add <col>
+
+    對Forever清單輸出加上欄位
+
+- columns rm <col>
+
+    刪除Forever清單輸出欄位
+
+- columns set <col>
+
+    設定Forever清單輸出所有欄位
+
+下列是httpserver.js作為Forever的daemon啟動後list輸出的範例：
+
+```
+$ forever list
+info:    Forever processes running
+data:        uid  command                            script                                                 forever pid   id log
+file                                uptime
+data:    [0] b74H "C:\Program Files\nodejs\node.exe" C:\Users\eden_liu\node-learning-2nd\ch11\httpserver.js 13156   13592    C:\
+Users\eden_liu\.forever\forever.log 0:0:0:46.728
+```
+
+以logs動作列出紀錄：
+
+```
+$ forever logs
+info:    Logs for running Forever processes
+data:        script                                                 logfile
+data:    [0] C:\Users\eden_liu\node-learning-2nd\ch11\httpserver.js C:\Users\eden_liu\.forever\forever.log
+```
+
+還有大量的選項，包括以上示範的紀錄設置與執行腳本(-s或--silent)、開啟Forever的對話(-v或--verbose)、設定腳本的來源目錄(--sourceDir)等，這些都可以輸入下列命令查詢：
+
+```
+forever --help
+```
+
