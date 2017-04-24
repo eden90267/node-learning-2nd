@@ -698,3 +698,179 @@ data:    [0] C:\Users\eden_liu\node-learning-2nd\ch11\httpserver.js C:\Users\ede
 forever --help
 ```
 
+你可在你的程式碼中使用伴隨的forever-monitor模組來直接運用Forever，如該模組的文件所示：
+
+```
+npm install forever-monitor
+```
+
+```
+var forever = require('forever-monitor');
+
+var child = new (forever.Monitor)('httpserver.js', {
+    max: 3,
+    silent: true,
+    args: []
+});
+
+child.on('exit', function() {
+    console.log(`httpserver.js has exited after 3 restarts`);
+});
+
+child.start();
+```
+
+此外，可並用Forever與Nodemon，不只可在應用程式無預期失敗時重啟，還可確保程式碼更新時更新程式。
+
+```
+npm install -g nodemon
+```
+
+Nodemon包裝你的應用程式，相較於使用Node來啟動應用程式，改以Nodemon啟動：
+
+```
+nodemon app.js
+```
+
+Nodemon會安靜的監控執行應用程式的目錄(與底下的目錄)，檢查檔案的異動。如果發現異動，它會重啟應用程式以反映最近的修改。
+
+可傳遞參數給應用程式：
+
+```
+nodemon app.js param1 param2
+```
+
+也可使用CoffeeScript
+
+```
+nodemon someapp.coffee
+```
+
+如想要Nodemon監控目前目錄以外的其他目錄，使用--watch旗標：
+
+```
+nodemon --watch dir1 -- watch libs app.js
+```
+
+還有其他旗標，見[模組文件](https://github.com/remy/nodemon/)。
+
+為並用Nodemon與Forever，將Nodemon包裝在Forever中並指定--exitcrash選項以確保應用程式當掉時Nodemon會乾淨的結束並將控制交給Forever：
+
+```
+forever start nodemon --exitcrash serverfinal.js
+```
+
+如收到Forever找不到Nodemon的錯誤，使用完整路徑：
+
+```
+forever start /usr/bin/nodemon --exitcrash serverfinal.js
+```
+
+如果應用程式當掉，Forever會啟動Nodemon，它會啟動Node腳本，不只確保原始碼改變時執行中的腳本會更新，還能讓意料外的失敗不會使得應用程式永遠離線。
+
+## 以ApacheBench進行效能基準與負載測試
+
+我們需要方法來效能測試我們的Node應用程式，特別是改善效能的過程中。
+
+效能測試由基準測試與負載測試組成。**基準測試**又稱**比較測試**，執行各種版本或修改的應用程式然後判斷哪一個比較好。它是調整應用程式以改善效率與擴張性時很有用的工具。你建構標準化測試，對各種版本執行，然後分析結果。
+
+另一方面，**負載測試**基本上壓迫你的應用程式。你嘗試發現應用程式何時由於太多資源需求或太多並行使用者而導致失敗或趴下。你基本上想要壓迫應用程式直到它失敗為止。失敗是複雜測試的成功。
+
+有多種工具可處理這兩種效能測試，其中之一是ApacheBench。因很少伺服器沒安裝Apache。當想要判斷靜態資料庫連線供重複使用或每次建構連線並拋棄哪一種方式比較好時。會使用ApacheBench來執行測試。
+
+ApacheBench通常稱為ab。ab是命令列工具，能讓我們指定應用程式的執行次數與並行使用者數量。如果想模擬20個使用者同時存取網頁應用程式100次：
+
+```
+ap -n 100 -c 20 http://eden.com:8124/
+```
+
+提供最後的線很重要，ab需完整的URL，包括路徑。
+
+ab輸出相當多的資訊。下列是一個測試的例子(排除了工具)：
+
+```
+ab -n 100 -c 20 http://eden.com:8124/
+This is ApacheBench, Version 2.3 <$Revision: 1757674 $>
+Copyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
+Licensed to The Apache Software Foundation, http://www.apache.org/
+
+Benchmarking eden.com (be patient).....done
+
+
+Server Software:
+Server Hostname:        eden.com
+Server Port:            8124
+
+Document Path:          /
+Document Length:        13 bytes
+
+Concurrency Level:      20
+Time taken for tests:   0.046 seconds
+Complete requests:      100
+Failed requests:        0
+Total transferred:      11400 bytes
+HTML transferred:       1300 bytes
+Requests per second:    2176.42 [#/sec] (mean)
+Time per request:       9.189 [ms] (mean)
+Time per request:       0.459 [ms] (mean, across all concurrent requests)
+Transfer rate:          242.30 [Kbytes/sec] received
+
+Connection Times (ms)
+              min  mean[+/-sd] median   max
+Connect:        0    0   0.2      0       1
+Processing:     3    9   4.6      7      19
+Waiting:        3    9   4.6      7      19
+Total:          3    9   4.7      8      19
+
+Percentage of the requests served within a certain time (ms)
+  50%      8
+  66%      9
+  75%     10
+  80%     14
+  90%     17
+  95%     19
+  98%     19
+  99%     19
+ 100%     19 (longest request)
+```
+
+我們在意的是每個測試花了多少時間與測試完成的累積分佈(百分比)。根據此輸出，請求的平均時間(第一個Time per request的值)是9.189毫秒。這是使用者等待回應的時間。第二行與處理量有關，可能沒第一行重要。
+
+累積分佈提供一段時間內請求處理的百分比資訊。同樣的，這表示回應時間介於8與19毫秒，大部分回應在19毫秒內處理(95%)。
+
+最後一個要注意的值是request per second一此例中為2176.42。這個值可預測應用程式的擴展性，因為它讓我們知道每秒最大請求數一也就是存取應用程式的上限。但你必須在不同時間與不同負載下進行測試，特別是如果你在系統進行其他服務時執行測試。
+
+※ 也可使用Loadtest應用程式執行負載測試：
+
+```
+npm install -g loadtest
+```
+
+較ApacheBench好的地方是你可以設定使用者以及請求：
+
+```
+loadtest [-n requests] [-c concurrency] [-k] URL
+```
+
+```
+loadtest -n 100 -c 20 -k http://eden.com:8124/
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO Requests: 0 (0%), requests per second: 0, mean latency: 0 ms
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO Target URL:          http://eden.com:8124/
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO Max requests:        100
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO Concurrency level:   20
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO Agent:               keepalive
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO Completed requests:  100
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO Total errors:        0
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO Total time:          0.09493280400000001 s
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO Requests per second: 1053
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO Mean latency:        14.9 ms
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO Percentage of the requests served within a certain time
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO   50%      11 ms
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO   90%      26 ms
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO   95%      27 ms
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO   99%      28 ms
+[Tue Apr 25 2017 06:10:12 GMT+0800 (+08)] INFO  100%      28 ms (longest request)
+```
